@@ -13,6 +13,11 @@ $startup = Join-Path ([Environment]::GetFolderPath('Startup')) 'Codex Meter Pack
 $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Codex Meter Packaging Test.lnk'
 $registry = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\CodexMeter.PackagingTest_is1'
 if ((Test-Path -LiteralPath $startup) -or (Test-Path -LiteralPath $menu) -or (Test-Path -LiteralPath $registry)) { throw 'An older packaging test exists; inspect it before running another.' }
+if (-not ('CodexMeter.ShortcutProbe' -as [type])) {
+    $shortcutCode = Get-Content -LiteralPath (Join-Path $repo 'src/Common/WindowsShortcut.cs') -Raw
+    $shortcutCode += "`npublic static class ShortcutProbe { public static string Target(string path) => WindowsShortcut.Read(path).Target; }"
+    Add-Type -TypeDefinition $shortcutCode
+}
 function Check($value, [string]$message) { if (-not $value) { throw $message }; $checks.Add($message) }
 function RunSetup([string]$file, [string[]]$arguments, [bool]$expectFailure = $false) {
     $p = Start-Process -FilePath $file -ArgumentList $arguments -WindowStyle Hidden -PassThru
@@ -22,9 +27,7 @@ function RunSetup([string]$file, [string[]]$arguments, [bool]$expectFailure = $f
     elseif ($p.ExitCode -ne 0) { throw "Installer exit code $($p.ExitCode). See logs in $run" }
 }
 function ShortcutTarget([string]$path) {
-    $shell = New-Object -ComObject WScript.Shell
-    try { $link = $shell.CreateShortcut($path); try { return $link.TargetPath } finally { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($link) } }
-    finally { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell) }
+    return [CodexMeter.ShortcutProbe]::Target($path)
 }
 function StartFixture([bool]$ignore = $false) {
     $ready = Join-Path $run ([Guid]::NewGuid().ToString('N') + '.ready')

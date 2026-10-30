@@ -43,6 +43,11 @@ public static class PortabilityVerification
             StartupRegistration.WriteShortcut(shortcut, destination, "--startup");
             var link = StartupRegistration.ReadShortcut(shortcut);
             Check(link.Target == destination && link.Arguments == "--startup" && link.Directory == Path.GetDirectoryName(destination), "startup shortcut target, argument and working directory round-trip through Windows COM");
+            string unicodeTarget = Make("한글 résumé 日本語 🌙\\CodexMeter.exe");
+            File.Copy(Environment.ProcessPath!, unicodeTarget, true);
+            string unicodeLink = Path.Combine(root, "다국어 바로가기 🌙.lnk");
+            StartupRegistration.WriteShortcut(unicodeLink, unicodeTarget, "--startup");
+            Check(StartupRegistration.ReadShortcut(unicodeLink).Target == unicodeTarget, "Unicode shortcut paths survive characters outside the system ANSI code page");
             Directory.Move(Path.GetDirectoryName(source)!, Path.Combine(root, "원본 이동 후"));
             Check(File.Exists(StartupRegistration.ReadShortcut(shortcut).Target), "moving extracted package does not break installed shortcut");
             string newDestination = Installation.CopyApplication(Path.GetDirectoryName(destination)!, Path.Combine(root, "사용자 설치"));

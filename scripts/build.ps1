@@ -23,7 +23,7 @@ try {
         # Fresh directory on every build avoids publishing stale runtime files.
         $run = Join-Path $repo ('artifacts/' + $item + '-' + [Guid]::NewGuid().ToString('N'))
         $payload = Join-Path $run 'app'
-        & $DotNet publish 'src/CodexMeter.csproj' -c Release -r win-x64 --self-contained true "-p:MeterEdition=$item" -o $payload --nologo
+        & $DotNet publish 'src/CodexMeter.csproj' -c Release -r win-x64 --self-contained true "-p:MeterEdition=$item" -p:UseSharedCompilation=false -o $payload --nologo
         if ($LASTEXITCODE -ne 0) { throw "Publish failed: $item" }
         & (Join-Path $PSScriptRoot 'verify.ps1') -Executable (Join-Path $payload 'CodexMeter.exe') -ReportDirectory (Join-Path $run 'verification')
         $licenses = Join-Path $payload 'licenses'

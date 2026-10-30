@@ -20,21 +20,7 @@ public static class StartupRegistration
         executable = Path.GetFullPath(executable);
         if (!File.Exists(executable)) throw new FileNotFoundException("실행 파일이 없습니다.");
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-        object shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
-        object? shortcut = null;
-        try
-        {
-            dynamic wsh = shell;
-            shortcut = wsh.CreateShortcut(file);
-            dynamic link = shortcut;
-            link.TargetPath = executable;
-            link.Arguments = arguments;
-            link.WorkingDirectory = Path.GetDirectoryName(executable);
-            link.Description = "Codex Meter · 사용량 모니터";
-            link.IconLocation = executable + ",0";
-            link.Save();
-        }
-        finally { if (shortcut != null) Marshal.FinalReleaseComObject(shortcut); Marshal.FinalReleaseComObject(shell); }
+        WindowsShortcut.Write(file, executable, arguments);
         var saved = ReadShortcut(file);
         if (!string.Equals(saved.Target, executable, StringComparison.OrdinalIgnoreCase) || saved.Arguments != arguments)
             throw new IOException("바로가기 등록 결과를 확인하지 못했습니다.");
@@ -43,10 +29,7 @@ public static class StartupRegistration
     public static (string Target, string Arguments, string Directory) ReadShortcut(string file)
     {
         if (!File.Exists(file)) return ("", "", "");
-        object shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
-        object? shortcut = null;
-        try { dynamic wsh = shell; shortcut = wsh.CreateShortcut(file); dynamic link = shortcut; return ((string)link.TargetPath, (string)link.Arguments, (string)link.WorkingDirectory); }
-        finally { if (shortcut != null) Marshal.FinalReleaseComObject(shortcut); Marshal.FinalReleaseComObject(shell); }
+        return WindowsShortcut.Read(file);
     }
 
     public static bool Registered { get { try { return File.Exists(ReadShortcut(Link).Target); } catch { return false; } } }
