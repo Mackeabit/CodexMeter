@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.2.4 — 2026-10-30
+
+- Preserve the floating window's current position when display settings change, including while hidden in the tray. Only correct a position that falls outside the available working area.
+- Share the display-change handler between Classic and Expanded, defer correction until pending layout work settles, and save only when correction actually moves the window.
+- Keep existing artwork, view modes, preferences, startup registration and usage-restriction displays unchanged.
+- Add regression checks for visible/hidden position preservation, off-screen recovery and unrelated preference preservation.
+
 ## 2.2.3 — 2026-10-30
 
 - Standardize Classic and Expanded tray icons on the existing number design. Remove battery-style selection and its obsolete setting while retaining warning (`!`), unavailable (`—`) and automatic light/dark contrast states.

@@ -196,6 +196,7 @@ public static class Verification
                     window.SetView(WindowView.Detail, false);
                     Check(window.SegmentRows.Visibility == Visibility.Collapsed && window.Expanded.Visibility == Visibility.Visible && window.Width == 348, "segmented view returns to original detail layout");
                     SettingsVerification.Run(window, Check);
+                    await PositionVerification.Run(window, Check);
                     window.Hide(); Check(!window.IsVisible, "hide works"); window.ShowWidget(); Check(window.IsVisible, "restore works");
                 }
                 catch (Exception e) { uiError = e.Message; }

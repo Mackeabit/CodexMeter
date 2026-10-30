@@ -8,6 +8,8 @@ The tray and floating-window menus share the same settings. **작업표시줄 �
 
 The taskbar submenu shows a separate information footer such as `상태: 표시 중` (Status: visible), including when the meter is hidden because the taskbar has insufficient space.
 
+Display-setting changes preserve the floating window's position. A window outside the available working area is moved back into view; a hidden window stays hidden. Existing layouts and preferences are retained.
+
 **[Download](https://github.com/Mackeabit/CodexMeter/releases/latest)** · [한국어](README.md) · [Privacy](PRIVACY.md) · [License](LICENSE)
 
 This is an independent community project, not an OpenAI product. It displays limits reported by the locally installed Codex CLI/app-server, not all ChatGPT model limits.

@@ -59,7 +59,6 @@ public partial class MainWindow : Window
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
         Closed += (_, _) => Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
     }
-    private void OnDisplayChanged(object? sender, EventArgs e) => Dispatcher.BeginInvoke(() => { PlaceDefault(); Save(); });
     private void PlaceInitial()
     {
         if (prefs.Left is double l && prefs.Top is double t && double.IsFinite(l) && double.IsFinite(t))

@@ -48,7 +48,7 @@ public static class StartupRegistration
 
 public static class Installation
 {
-    public const string Version = "2.2.3";
+    public const string Version = "2.2.4";
 #if EXPANDED
     public const string Edition = "Expanded";
 #else

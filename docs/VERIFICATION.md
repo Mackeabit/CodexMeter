@@ -14,6 +14,7 @@ The build runs each edition's built-in synthetic suites before packaging:
 - Codex path discovery and Windows shortcut handling with Korean/spaced paths.
 - Notification deduplication, threshold crossings, reset cycles, restart persistence, and storage failures.
 - Legacy view preference migration, exclusive view selection through both menu surfaces, taskbar/window control separation, notification menu visibility and menu parity.
+- Display-change callback regression checks for visible/hidden window position preservation, off-screen recovery and unchanged preferences. These simulate the callback; they do not physically reconnect monitors or change Windows display settings.
 
 `verify-installers.ps1` compiles the same installer script with **test-only AppId, shortcut names, mutex/event names, and install directory**. It checks fresh install, graceful shutdown coordination, a busy-app rejection, a same-version edition switch, startup selection/preservation/removal, installed-binary verification, uninstall, and preservation of unowned files. It does not replace the user's real installation or operate their real startup shortcut. The test files remain under ignored `artifacts/` for inspection; the successful test uninstalls its own registered app.
 
