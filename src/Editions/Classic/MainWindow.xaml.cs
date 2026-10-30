@@ -17,21 +17,6 @@ using Drawing = System.Drawing;
 
 namespace CodexMeter;
 
-public sealed class Preferences
-{
-    public double? Left { get; set; }
-    public double? Top { get; set; }
-    public bool Compact { get; set; }
-    public bool Segmented { get; set; }
-    public bool Taskbar { get; set; } = true;
-    public string? CodexPath { get; set; }
-    public bool Topmost { get; set; } = true;
-    public double Opacity { get; set; } = 1;
-    public int IntervalSeconds { get; set; } = 120;
-    public bool Alerts { get; set; } = false;
-    public string TrayStyle { get; set; } = "number";
-}
-
 public partial class MainWindow : Window
 {
     private readonly bool testing;
@@ -40,13 +25,11 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer clock = new() { Interval = TimeSpan.FromSeconds(1) };
     private Forms.NotifyIcon? tray;
     private TaskbarHost? taskbarHost;
-    private Forms.ToolStripMenuItem? taskbarItem;
     private Drawing.Icon? currentIcon;
     private Snapshot? snapshot;
     private bool busy, exiting;
     private string? trayState;
     private string? segmentedState;
-    private Forms.ToolStripMenuItem? numberStyleItem, batteryStyleItem;
     private string? error;
     private DateTimeOffset nextPoll = DateTimeOffset.MinValue;
     private readonly UsageAlerts alerts;
@@ -59,9 +42,7 @@ public partial class MainWindow : Window
         alerts = new UsageAlerts(testing ? null : UsageAlerts.DefaultPath);
         InitializeComponent();
         if (!testing) try { if (File.Exists(settingsFile)) prefs = JsonSerializer.Deserialize<Preferences>(File.ReadAllText(settingsFile)) ?? new(); } catch { }
-        prefs.IntervalSeconds = prefs.IntervalSeconds is 60 or 120 or 300 ? prefs.IntervalSeconds : 120;
-        prefs.TrayStyle = prefs.TrayStyle == "battery" ? "battery" : "number";
-        prefs.Opacity = double.IsFinite(prefs.Opacity) ? Math.Clamp(prefs.Opacity, .75, 1) : 1;
+        prefs.Normalize();
         Topmost = prefs.Topmost; Opacity = prefs.Opacity;
         client.PreferredPath = prefs.CodexPath;
         ApplyView(false);
@@ -111,54 +92,9 @@ public partial class MainWindow : Window
     public void ShowWidget() { Show(); WindowState = WindowState.Normal; }
     private void Save()
     {
+        if (testing) return;
         prefs.Left = Left; prefs.Top = Top;
         try { Directory.CreateDirectory(Path.GetDirectoryName(settingsFile)!); var temp = settingsFile + ".tmp"; File.WriteAllText(temp, JsonSerializer.Serialize(prefs)); File.Move(temp, settingsFile, true); } catch { }
-    }
-    private void CreateTray()
-    {
-        tray = new Forms.NotifyIcon { Text = "Codex Meter · 연결 중", Visible = true };
-        UpdateTray();
-        tray.MouseClick += (_, e) => Dispatcher.Invoke(() => { if (e.Button == Forms.MouseButtons.Left) { if (IsVisible) Hide(); else ShowWidget(); } });
-        var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("위젯 표시 / 숨기기", null, (_, _) => Dispatcher.Invoke(() => { if (IsVisible) Hide(); else ShowWidget(); }));
-        menu.Items.Add("연결 및 자동 실행 설정…", null, (_, _) => Dispatcher.Invoke(OpenConnectionSettings));
-        menu.Items.Add("새로고침", null, (_, _) => Dispatcher.InvokeAsync(async () => await RefreshAsync()));
-        var alertsItem = new Forms.ToolStripMenuItem("잔여량 20%·5% 알림");
-        alertsItem.Click += (_, _) => Dispatcher.Invoke(ToggleAlerts);
-        var pauseItem = new Forms.ToolStripMenuItem();
-        pauseItem.Click += (_, _) => Dispatcher.Invoke(ToggleAlertPause);
-        var alertStatus = new Forms.ToolStripMenuItem { Enabled = false };
-        menu.Items.Add(alertsItem);
-        menu.Items.Add(pauseItem);
-        menu.Items.Add(alertStatus);
-        menu.Opening += (_, _) => {
-            alertsItem.Checked = prefs.Alerts;
-            pauseItem.Text = AlertPauseTitle;
-            pauseItem.Enabled = prefs.Alerts && alerts.HasQuotas(snapshot);
-            alertStatus.Visible = alerts.StorageWarning != null;
-            alertStatus.Text = alerts.StorageWarning ?? "";
-        };
-        var styleMenu = new Forms.ToolStripMenuItem("아이콘 디자인");
-        numberStyleItem = new Forms.ToolStripMenuItem("숫자만") { Checked = prefs.TrayStyle == "number" };
-        batteryStyleItem = new Forms.ToolStripMenuItem("배터리 + 숫자") { Checked = prefs.TrayStyle == "battery" };
-        numberStyleItem.Click += (_, _) => Dispatcher.Invoke(() => SetTrayStyle("number"));
-        batteryStyleItem.Click += (_, _) => Dispatcher.Invoke(() => SetTrayStyle("battery"));
-        styleMenu.DropDownItems.Add(numberStyleItem);
-        styleMenu.DropDownItems.Add(batteryStyleItem);
-        menu.Items.Add(styleMenu);
-        taskbarItem = new Forms.ToolStripMenuItem("작업표시줄 분할 막대") { Checked = prefs.Taskbar };
-        taskbarItem.Click += (_, _) => Dispatcher.Invoke(() => SetTaskbar(!prefs.Taskbar));
-        menu.Items.Add(taskbarItem);
-        var taskbarStatusItem = new Forms.ToolStripMenuItem { Enabled = false };
-        menu.Items.Add(taskbarStatusItem);
-        menu.Opening += (_, _) => { taskbarStatusItem.Visible = prefs.Taskbar; taskbarStatusItem.Text = taskbarHost?.Status ?? "작업표시줄 연결 대기"; };
-        menu.Items.Add("가로 분할 막대 위젯", null, (_, _) => Dispatcher.Invoke(() => { SetSegmented(true); ShowWidget(); }));
-        menu.Items.Add("상세 화면", null, (_, _) => Dispatcher.Invoke(() => { SetCompact(false); ShowWidget(); }));
-        menu.Items.Add("작게 / 크게", null, (_, _) => Dispatcher.Invoke(() => { SetCompact(!prefs.Compact); ShowWidget(); }));
-        menu.Items.Add("위치 초기화", null, (_, _) => Dispatcher.Invoke(() => { ShowWidget(); PlaceDefault(); Save(); }));
-        menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add("종료", null, (_, _) => Dispatcher.Invoke(Exit));
-        tray.ContextMenuStrip = menu;
     }
     [DllImport("user32.dll")] private static extern bool DestroyIcon(IntPtr handle);
     private void UpdateTray()
@@ -169,10 +105,10 @@ public partial class MainWindow : Window
         string text = stale ? "!" : main == null ? "—" : Math.Floor(main.Remaining).ToString();
         bool light = TrayArtwork.IsLightTaskbar();
         int iconSize = Math.Clamp(Forms.SystemInformation.SmallIconSize.Width, 16, 64);
-        var state = $"{text}:{stale}:{main?.Duration}:{snapshot?.Allowed}:{light}:{iconSize}:{prefs.TrayStyle}:{main?.Remaining}";
+        var state = $"{text}:{stale}:{main?.Duration}:{snapshot?.Allowed}:{light}:{iconSize}:{main?.Remaining}";
         if (state == trayState) return;
         trayState = state;
-        using var bitmap = TrayArtwork.Render(text, iconSize, light, stale, prefs.TrayStyle, main?.Remaining);
+        using var bitmap = TrayArtwork.Render(text, iconSize, light);
         var h = bitmap.GetHicon();
         using var borrowed = Drawing.Icon.FromHandle(h);
         var icon = (Drawing.Icon)borrowed.Clone();
@@ -269,17 +205,6 @@ public partial class MainWindow : Window
         ExtraWindows.Visibility = ExtraWindows.Children.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         RenderSegments();
     }
-    public void SetCompact(bool value, bool save = true)
-    {
-        prefs.Segmented = false;
-        prefs.Compact = value;
-        ApplyView(save);
-    }
-    public void SetSegmented(bool value, bool save = true)
-    {
-        prefs.Segmented = value;
-        ApplyView(save);
-    }
     private void ApplyView(bool save)
     {
         double oldHeight = ActualHeight;
@@ -344,52 +269,14 @@ public partial class MainWindow : Window
     }
     private void DragWindow(object sender, MouseButtonEventArgs e)
     {
-        if (e.ClickCount == 2) { SetCompact(prefs.Segmented ? false : !prefs.Compact); return; }
+        if (e.ClickCount == 2) { ToggleCompactView(); return; }
         if (e.LeftButton == MouseButtonState.Pressed) { try { DragMove(); } catch { } KeepVisible(); if (!testing) Save(); }
-    }
-    private void ShowSettings()
-    {
-        var menu = new ContextMenu { Background = Brush("#FFFFFF"), Foreground = Brush("#181818"), BorderBrush = Brush("#D5D5D5"), FontSize = 13 };
-        void Add(string title, Action action, bool? check = null)
-        {
-            var item = new MenuItem { Header = title, IsCheckable = check.HasValue, IsChecked = check ?? false };
-            item.Click += (_, _) => action(); menu.Items.Add(item);
-        }
-        Add("연결 및 자동 실행 설정…", OpenConnectionSettings);
-        menu.Items.Add(new Separator());
-        Add("항상 위에 표시", () => { Topmost = prefs.Topmost = !prefs.Topmost; Save(); }, prefs.Topmost);
-        Add("작업표시줄 분할 막대", () => SetTaskbar(!prefs.Taskbar), prefs.Taskbar);
-        if (prefs.Taskbar && taskbarHost != null) { var status = new MenuItem { Header = taskbarHost.Status, IsEnabled = false }; menu.Items.Add(status); }
-        Add("작은 표시창", () => SetCompact(!prefs.Compact), prefs.Compact);
-        Add("가로 분할 막대 위젯", () => SetSegmented(!prefs.Segmented), prefs.Segmented);
-        if (prefs.Segmented) Add("상세 화면", () => SetCompact(false));
-        Add("잔여량 20%·5% 알림", ToggleAlerts, prefs.Alerts);
-        var pauseItem = new MenuItem { Header = AlertPauseTitle, IsEnabled = prefs.Alerts && alerts.HasQuotas(snapshot) };
-        pauseItem.Click += (_, _) => ToggleAlertPause();
-        menu.Items.Add(pauseItem);
-        if (alerts.StorageWarning != null) menu.Items.Add(new MenuItem { Header = alerts.StorageWarning, IsEnabled = false });
-        var styleMenu = new MenuItem { Header = "아이콘 디자인" };
-        foreach (var (key, title) in new[] { ("number", "숫자만"), ("battery", "배터리 + 숫자") })
-        {
-            var item = new MenuItem { Header = title, IsCheckable = true, IsChecked = prefs.TrayStyle == key };
-            item.Click += (_, _) => SetTrayStyle(key);
-            styleMenu.Items.Add(item);
-        }
-        menu.Items.Add(styleMenu);
-        menu.Items.Add(new Separator());
-        foreach (var n in new[] { 60, 120, 300 }) Add($"{n / 60}분마다 갱신", () => { prefs.IntervalSeconds = n; nextPoll = DateTimeOffset.Now.AddSeconds(n); Save(); RenderState(); }, prefs.IntervalSeconds == n);
-        menu.Items.Add(new Separator());
-        foreach (var o in new[] { 1d, .9, .8 }) Add($"불투명도 {o * 100:0}%", () => { Opacity = prefs.Opacity = o; Save(); }, Math.Abs(prefs.Opacity - o) < .01);
-        menu.Items.Add(new Separator());
-        Add("위치 초기화", () => { PlaceDefault(); Save(); });
-        Add("종료", Exit);
-        menu.PlacementTarget = this; menu.IsOpen = true;
     }
     private ConnectionWindow? connectionWindow;
     private void OpenConnectionSettings()
     {
         if (connectionWindow != null) { connectionWindow.Activate(); return; }
-        connectionWindow = new ConnectionWindow(client, path => { prefs.CodexPath = path; Save(); }, Exit);
+        connectionWindow = new ConnectionWindow(client, path => { prefs.CodexPath = path; Save(); });
         connectionWindow.Closed += (_, _) => { connectionWindow = null; nextPoll = DateTimeOffset.MinValue; };
         connectionWindow.Show();
     }
@@ -397,11 +284,10 @@ public partial class MainWindow : Window
     public void SetTaskbar(bool enabled, bool save = true)
     {
         prefs.Taskbar = enabled;
-        if (taskbarItem != null) taskbarItem.Checked = enabled;
         if (enabled && taskbarHost == null)
         {
             taskbarHost = new TaskbarHost(
-                () => Dispatcher.BeginInvoke(() => { SetCompact(false); ShowWidget(); }),
+                () => Dispatcher.BeginInvoke(() => { SetView(WindowView.Detail); ShowWidget(); }),
                 () => Dispatcher.BeginInvoke(() => SetTaskbar(false)),
                 () => Dispatcher.BeginInvoke(async () => await RefreshAsync()));
         }
@@ -415,20 +301,11 @@ public partial class MainWindow : Window
         try { taskbarHost.Update(snapshot, IsStale(DateTimeOffset.Now)); }
         catch { taskbarHost.ReportFailure(); }
     }
-    public void SetTrayStyle(string style)
-    {
-        prefs.TrayStyle = style == "battery" ? "battery" : "number";
-        if (numberStyleItem != null) numberStyleItem.Checked = prefs.TrayStyle == "number";
-        if (batteryStyleItem != null) batteryStyleItem.Checked = prefs.TrayStyle == "battery";
-        trayState = null;
-        UpdateTray();
-        if (!testing) Save();
-    }
     private void UpdateProgress() { if (ProgressFill != null) ProgressFill.Width = Math.Max(0, ProgressTrack.ActualWidth * (snapshot?.Main?.Remaining ?? 0) / 100); }
     private void ProgressSizeChanged(object sender, SizeChangedEventArgs e) => UpdateProgress();
     private void OpenSettings(object sender, RoutedEventArgs e) => ShowSettings();
     private void HideClick(object sender, RoutedEventArgs e) => Hide();
-    private void CompactClick(object sender, RoutedEventArgs e) => SetCompact(!prefs.Compact);
+    private void CompactClick(object sender, RoutedEventArgs e) => ToggleCompactView();
     private async void RefreshClick(object sender, RoutedEventArgs e) => await RefreshAsync();
     public void Capture(string path)
     {

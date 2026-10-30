@@ -78,16 +78,14 @@ internal sealed class TaskbarHost : Forms.NativeWindow, IDisposable
     private DateTime nextScan;
     private DateTime scanTime;
     private readonly Action showDetail;
-    private readonly Action disable;
-    private readonly Action refresh;
     private readonly Forms.ContextMenuStrip menu = new();
     private UsageToolTip? hover;
-    public string Status { get; private set; } = "작업표시줄 연결 대기";
+    public string Status { get; private set; } = "연결 대기 중";
     public bool Attached => Handle != IntPtr.Zero && TaskbarNative.GetParent(Handle) == parent && TaskbarNative.IsWindowVisible(Handle);
-    public void ReportFailure() { hover?.Hide(); Status = "작업표시줄 연결 재시도 중"; if (Handle != IntPtr.Zero) TaskbarNative.ShowWindow(Handle, 0); }
+    public void ReportFailure() { hover?.Hide(); Status = "연결 재시도 중"; if (Handle != IntPtr.Zero) TaskbarNative.ShowWindow(Handle, 0); }
     public TaskbarHost(Action showDetail, Action disable, Action refresh)
     {
-        this.showDetail = showDetail; this.disable = disable; this.refresh = refresh;
+        this.showDetail = showDetail;
         menu.Items.Add("상세 보기", null, (_, _) => showDetail());
         menu.Items.Add("새로고침", null, (_, _) => refresh());
         menu.Items.Add("작업표시줄 표시 끄기", null, (_, _) => disable());
@@ -96,7 +94,7 @@ internal sealed class TaskbarHost : Forms.NativeWindow, IDisposable
     {
         snapshot = value; stale = old;
         var bar = TaskbarNative.FindWindow("Shell_TrayWnd", null);
-        if (bar == IntPtr.Zero) { hover?.Hide(); Status = "작업표시줄 다시 연결 대기"; return; }
+        if (bar == IntPtr.Zero) { hover?.Hide(); Status = "다시 연결 대기 중"; return; }
         if (bar != parent || Handle == IntPtr.Zero || !TaskbarNative.IsWindow(Handle))
         {
             hover?.Dispose(); hover = null;
@@ -133,13 +131,13 @@ internal sealed class TaskbarHost : Forms.NativeWindow, IDisposable
         {
             hover.Hide();
             TaskbarNative.ShowWindow(Handle, 0);
-            Status = occupied == null ? "작업표시줄 공간 확인 중" : "날짜 표시 공간 부족 · 가로 분할 막대 위젯 사용";
+            Status = occupied == null ? "공간 확인 중" : "표시 안 됨 · 공간 부족";
             return;
         }
         var p = position.Value;
         TaskbarNative.SetWindowPos(Handle, IntPtr.Zero, p.X, p.Y, p.Width, p.Height, 0x0010 | 0x0040);
         Present(p.Width, p.Height);
-        Status = p.Width < width ? "리셋 날짜 표시 중 · 막대 폭 자동 조절" : "리셋 날짜 표시 중";
+        Status = p.Width < width ? "표시 중 · 막대 폭 자동 조절" : "표시 중";
     }
     internal static Rectangle? FindMeterSpace(Rectangle area, Rectangle[]? obstacles, int right, float scale, int height) =>
         FindResponsiveSpace(area, obstacles, right, (int)Math.Round(MeterArtwork.PreferredWidth * scale), (int)Math.Ceiling(MeterArtwork.MinimumWidth * scale), height, (int)(6 * scale));

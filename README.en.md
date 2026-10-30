@@ -2,6 +2,12 @@
 
 A free Windows taskbar and tray monitor for Codex quota remaining and reset times. MIT licensed, with **Classic** and **Expanded** layouts. The application UI is currently Korean; the installer supports English and Korean when the compiler's Korean translation is available.
 
+The tray uses a single numeric icon design. Warning and unknown states still display `!` and `—`.
+
+The tray and floating-window menus share the same settings. **작업표시줄 설정** controls the taskbar bar; **별도 창 설정 → 표시 방식** selects exactly one floating-window layout: Detail, Compact, or Bars. Always-on-top, opacity and position reset apply only to the floating window. Existing preferences and artwork are preserved.
+
+The taskbar submenu shows a separate information footer such as `상태: 표시 중` (Status: visible), including when the meter is hidden because the taskbar has insufficient space.
+
 **[Download](https://github.com/Mackeabit/CodexMeter/releases/latest)** · [한국어](README.md) · [Privacy](PRIVACY.md) · [License](LICENSE)
 
 This is an independent community project, not an OpenAI product. It displays limits reported by the locally installed Codex CLI/app-server, not all ChatGPT model limits.

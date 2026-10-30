@@ -15,11 +15,10 @@ public sealed class ConnectionWindow : Window
     private readonly TextBlock startup = new() { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.DimGray, Margin = new Thickness(0, 8, 0, 12) };
     private readonly UsageClient client;
     private readonly Action<string?> savePath;
-    private readonly Action exit;
     private bool busy;
-    public ConnectionWindow(UsageClient client, Action<string?> savePath, Action exit)
+    public ConnectionWindow(UsageClient client, Action<string?> savePath)
     {
-        this.client = client; this.savePath = savePath; this.exit = exit;
+        this.client = client; this.savePath = savePath;
         Title = "Codex Meter · 연결 및 자동 실행";
         Width = 530; SizeToContent = SizeToContent.Height; ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;

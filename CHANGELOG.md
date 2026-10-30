@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.2.3 — 2026-10-30
+
+- Standardize Classic and Expanded tray icons on the existing number design. Remove battery-style selection and its obsolete setting while retaining warning (`!`), unavailable (`—`) and automatic light/dark contrast states.
+- Use a single Detail / Compact / Bars selection for the separate window; migrate conflicting old flags to the previously visible bars layout.
+- Group taskbar controls and floating-window controls separately, using one shared menu definition for both menu surfaces and editions.
+- Show taskbar status as a separate, readable information footer (for example, `상태: 표시 중`) instead of a disabled option in both settings menus.
+- Keep all existing artwork, window sizes, valid preferences, startup registration and alert history; retain legacy preference keys for older versions.
+- Existing settings files containing `TrayStyle` continue to load; other preferences and notification history are preserved.
+- Hide the per-reset notification pause action while notifications are disabled.
+- Remove unused connection-window callbacks, redundant taskbar callback fields and the obsolete .NET 8 drawing shim. Keep the legacy installer for script compatibility.
+- Scope release checksums to the version being built. Both editions include the .NET runtime in Setup EXE and portable ZIP packages.
+
+This release includes the changes tested locally as development versions 2.2.1 and 2.2.2; those versions were not published separately.
+
 ## 2.2.0
 
 - First public MIT-licensed source release.

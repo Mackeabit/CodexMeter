@@ -55,7 +55,7 @@ try {
         }
         @{ edition=$item; payload=$payload; verification=(Join-Path $run 'verification') } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $repo "artifacts/latest-$item.json") -Encoding utf8
     }
-    Get-ChildItem -LiteralPath $dist -File | Where-Object Extension -in '.exe','.zip' | Sort-Object Name | ForEach-Object {
+    Get-ChildItem -LiteralPath $dist -Filter "CodexMeter-$version-*-x64.*" -File | Where-Object Extension -in '.exe','.zip' | Sort-Object Name | ForEach-Object {
         (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + $_.Name
     } | Set-Content -LiteralPath (Join-Path $dist 'SHA256SUMS.txt') -Encoding ascii
     Write-Output "Release files: $dist"

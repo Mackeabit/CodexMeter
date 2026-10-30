@@ -141,7 +141,7 @@ public static class Verification
             {
                 try
                 {
-                    var connection = new ConnectionWindow(new UsageClient(), _ => { }, () => { }) { ShowActivated = false };
+                    var connection = new ConnectionWindow(new UsageClient(), _ => { }) { ShowActivated = false };
                     connection.Show();
                     await connection.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                     var connectionImage = new System.Windows.Media.Imaging.RenderTargetBitmap((int)(connection.ActualWidth * 2), (int)(connection.ActualHeight * 2), 192, 192, System.Windows.Media.PixelFormats.Pbgra32);
@@ -155,13 +155,12 @@ public static class Verification
                     await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                     window.Capture(Path.Combine(folder, live ? "live-expanded.png" : "expanded.png"));
                     Check(window.AmountText.Text == week.Main?.Remaining.ToString("0.#"), "rendered percentage matches parsed snapshot");
-                    window.SetCompact(true, false);
+                    window.SetView(WindowView.Compact, false);
                     await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                     window.Capture(Path.Combine(folder, live ? "live-compact.png" : "compact.png"));
                     TrayArtwork.SavePreview(Path.Combine(folder, "tray-sizes.png"));
-                    TrayArtwork.SaveStylePreview(Path.Combine(folder, "tray-styles.png"));
                     Check(window.Compact.Visibility == Visibility.Visible && window.Expanded.Visibility == Visibility.Collapsed, "compact view switches correctly");
-                    window.SetCompact(false, false);
+                    window.SetView(WindowView.Detail, false);
                     window.SetSnapshot(week, "테스트: 네트워크 연결 실패 · 마지막 확인값을 표시합니다.");
                     await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                     window.Capture(Path.Combine(folder, "stale.png"));
@@ -179,7 +178,7 @@ public static class Verification
                     TaskbarHost.SavePreview(Path.Combine(folder, "taskbar-150.png"), bars, false, 1.5f);
                     TaskbarHost.SavePreview(Path.Combine(folder, "taskbar-stale-150.png"), bars, true, 1.5f);
                     string BarText(int row) => ((System.Windows.Controls.Grid)window.SegmentRows.Children[row]).Children.OfType<System.Windows.Controls.TextBlock>().Single(n => System.Windows.Controls.Grid.GetColumn(n) == 1).Text;
-                    window.SetSegmented(true, false);
+                    window.SetView(WindowView.Segmented, false);
                     window.SetSnapshot(bars);
                     await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                     window.Capture(Path.Combine(folder, "segmented.png"));
@@ -194,8 +193,9 @@ public static class Verification
                     window.SetSnapshot(week);
                     await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                     window.Capture(Path.Combine(folder, live ? "live-segmented.png" : "segmented-single.png"));
-                    window.SetCompact(false, false);
+                    window.SetView(WindowView.Detail, false);
                     Check(window.SegmentRows.Visibility == Visibility.Collapsed && window.Expanded.Visibility == Visibility.Visible && window.Width == 348, "segmented view returns to original detail layout");
+                    SettingsVerification.Run(window, Check);
                     window.Hide(); Check(!window.IsVisible, "hide works"); window.ShowWidget(); Check(window.IsVisible, "restore works");
                 }
                 catch (Exception e) { uiError = e.Message; }
