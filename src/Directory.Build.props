@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <MeterEdition Condition="'$(MeterEdition)' == ''">Classic</MeterEdition>
+    <BaseIntermediateOutputPath>obj/$(MeterEdition)/</BaseIntermediateOutputPath>
+    <BaseOutputPath>bin/$(MeterEdition)/</BaseOutputPath>
+  </PropertyGroup>
+</Project>

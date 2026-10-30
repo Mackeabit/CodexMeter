@@ -1,0 +1,14 @@
+.tools/
+.nuget/
+artifacts/
+dist/
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+*.pdb
+auth.json
+settings.json
+notifications-v1.json
+last-error.txt

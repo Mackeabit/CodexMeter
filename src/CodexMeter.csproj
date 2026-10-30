@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>CodexMeter</AssemblyName>
+    <RootNamespace>CodexMeter</RootNamespace>
+    <Version>2.2.0</Version>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <RuntimeFrameworkVersion>10.0.14</RuntimeFrameworkVersion>
+    <PublishTrimmed>false</PublishTrimmed>
+    <DebugType>none</DebugType>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultPageItems>false</EnableDefaultPageItems>
+    <ApplicationManifest>Common/app.manifest</ApplicationManifest>
+    <ApplicationIcon>Common/meter.ico</ApplicationIcon>
+    <Product>CodexMeter $(MeterEdition)</Product>
+    <Authors>Mackeabit</Authors>
+    <Copyright>Copyright © 2026 Mackeabit and CodexMeter contributors</Copyright>
+    <RepositoryUrl>https://github.com/Mackeabit/CodexMeter</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <DefineConstants Condition="'$(MeterEdition)' == 'Expanded'">$(DefineConstants);EXPANDED</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Common/*.cs" />
+    <Compile Include="Editions/$(MeterEdition)/*.cs" />
+    <Page Include="Common/MainWindow.xaml" />
+  </ItemGroup>
+  <Target Name="ValidateEdition" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(MeterEdition)' != 'Classic' And '$(MeterEdition)' != 'Expanded'" Text="MeterEdition must be Classic or Expanded." />
+  </Target>
+</Project>

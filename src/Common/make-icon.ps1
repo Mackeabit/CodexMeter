@@ -1,0 +1,27 @@
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Drawing
+Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class MeterIconNative { [DllImport("user32.dll")] public static extern bool DestroyIcon(IntPtr h); }'
+$bitmap = [Drawing.Bitmap]::new(64,64)
+$graphics = [Drawing.Graphics]::FromImage($bitmap)
+$graphics.SmoothingMode = [Drawing.Drawing2D.SmoothingMode]::AntiAlias
+$graphics.Clear([Drawing.Color]::Transparent)
+$shape = [Drawing.Drawing2D.GraphicsPath]::new()
+$shape.AddArc(1,1,24,24,180,90)
+$shape.AddArc(39,1,24,24,270,90)
+$shape.AddArc(39,39,24,24,0,90)
+$shape.AddArc(1,39,24,24,90,90)
+$shape.CloseFigure()
+$background = [Drawing.SolidBrush]::new([Drawing.Color]::FromArgb(24,24,24))
+$graphics.FillPath($background,$shape)
+$inside = [Drawing.SolidBrush]::new([Drawing.Color]::White)
+$graphics.FillRectangle($inside,15,34,8,15)
+$graphics.FillRectangle($inside,28,24,8,25)
+$graphics.FillRectangle($inside,41,14,8,35)
+$handle = $bitmap.GetHicon()
+$icon = [Drawing.Icon]::FromHandle($handle)
+$stream = [IO.File]::Create((Join-Path $PSScriptRoot 'meter.ico'))
+$icon.Save($stream)
+$stream.Dispose()
+$icon.Dispose()
+[void][MeterIconNative]::DestroyIcon($handle)
+$inside.Dispose(); $background.Dispose(); $shape.Dispose(); $graphics.Dispose(); $bitmap.Dispose()
