@@ -6,7 +6,11 @@ foreach ($flag in @('--verify', '--verify-portability', '--verify-alerts')) {
     $process = Start-Process -FilePath $Executable -ArgumentList @($flag, ('"' + $folder + '"')) -WindowStyle Hidden -PassThru
     if (-not $process.WaitForExit(60000)) { $process.Kill(); throw "Verification timed out: $flag" }
     $process.Refresh()
-    if ($process.ExitCode -ne 0) { throw "Verification failed: $flag ($folder)" }
+    if ($process.ExitCode -ne 0) {
+        $failureReport = Join-Path $folder $reports[$flag]
+        if (Test-Path -LiteralPath $failureReport) { Write-Output (Get-Content -LiteralPath $failureReport -Raw) }
+        throw "Verification failed: $flag ($folder)"
+    }
     # Test names are explicit; a missing report is a failure, never a successful empty run.
     $report = Get-Content -LiteralPath (Join-Path $folder $reports[$flag]) -Raw | ConvertFrom-Json
     if (-not $report.passed) { throw "Failed report: $folder" }
