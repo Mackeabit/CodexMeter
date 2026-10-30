@@ -23,6 +23,32 @@ jobs:
       - name: Verify installer lifecycle in isolation
         shell: pwsh
         run: ./scripts/verify-installers.ps1
+      - name: Show Windows Shell fixture diagnostics on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          $target = Get-ChildItem artifacts -Filter CodexMeter.exe -Recurse | Where-Object FullName -match 'versions' | Select-Object -First 1
+          if ($target) {
+            $stage = 'create COM object'
+            try {
+              $shell = New-Object -ComObject WScript.Shell
+              $stage = 'create shortcut'
+              $link = $shell.CreateShortcut((Join-Path $env:RUNNER_TEMP 'CodexMeter-test.lnk'))
+              $stage = 'target'
+              $link.TargetPath = $target.FullName
+              $stage = 'arguments'
+              $link.Arguments = '--startup'
+              $stage = 'working directory'
+              $link.WorkingDirectory = $target.DirectoryName
+              $stage = 'description'
+              $link.Description = 'Codex Meter'
+              $stage = 'icon'
+              $link.IconLocation = $target.FullName + ',0'
+              $stage = 'save'
+              $link.Save()
+              Write-Output 'Windows Shell fixture shortcut succeeded'
+            } catch { Write-Output "Windows Shell fixture failed at $stage : $($_.Exception.Message)" }
+          }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: CodexMeter-Windows-x64

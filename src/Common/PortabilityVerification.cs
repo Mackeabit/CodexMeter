@@ -32,6 +32,9 @@ public static class PortabilityVerification
             Check(CodexLocator.SelectExisting(new[] { CodexLocator.StoreBinary(storeRoot) }) == store, "Store app-server binary is resolved inside package resources");
             string source = Path.Combine(root, "배포 폴더", "app");
             foreach (string name in new[] { "CodexMeter.exe", "CodexMeter.dll", "CodexMeter.runtimeconfig.json", "coreclr.dll", "hostfxr.dll", "ko\\resource.dll" }) Make(Path.GetRelativePath(root, Path.Combine(source, name)));
+            // Windows Shell may inspect the executable when assigning its icon.
+            // Use a valid PE apphost instead of a text file with an .exe suffix.
+            File.Copy(Environment.ProcessPath!, Path.Combine(source, "CodexMeter.exe"), true);
             string auth = Make("배포 폴더\\auth.json");
             string destination = Installation.CopyApplication(source, Path.Combine(root, "사용자 설치"));
             Check(File.Exists(destination) && File.Exists(Path.Combine(Path.GetDirectoryName(destination)!, "ko", "resource.dll")), "installer copies executable and nested runtime resources");
