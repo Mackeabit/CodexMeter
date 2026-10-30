@@ -85,6 +85,9 @@ Filename: "{app}\app\CodexMeter.exe"; Description: "{cm:Launch}"; Flags: nowait 
 #endif
 
 [Code]
+var
+  StartupChoiceInitialized: Boolean;
+
 function OpenEvent(DesiredAccess: LongWord; InheritHandle: Boolean; Name: String): THandle;
   external 'OpenEventW@kernel32.dll stdcall';
 function SetEvent(Event: THandle): Boolean;
@@ -111,11 +114,30 @@ begin
   Result := False;
 end;
 
-procedure InitializeWizard;
+function TasksSpecifiedOnCommandLine: Boolean;
+var
+  Index: Integer;
+  Argument: String;
 begin
-  { Preserve the actual startup shortcut, including changes made inside the app. }
-  if FileExists(ExpandConstant('{userstartup}\{#LinkName}.lnk')) then
-    WizardSelectTasks('autostart');
+  Result := False;
+  for Index := 1 to ParamCount do begin
+    Argument := Uppercase(ParamStr(Index));
+    if (Pos('/TASKS=', Argument) = 1) or (Pos('/MERGETASKS=', Argument) = 1) then begin
+      Result := True;
+      Exit;
+    end;
+  end;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  { InitializeWizard runs before Inno restores its task list. Apply once when
+    the task page is ready, preserving both user choices and silent overrides. }
+  if (CurPageID = wpSelectTasks) and not StartupChoiceInitialized then begin
+    StartupChoiceInitialized := True;
+    if not TasksSpecifiedOnCommandLine then
+      WizardForm.TasksList.Checked[0] := FileExists(ExpandConstant('{userstartup}\{#LinkName}.lnk'));
+  end;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
