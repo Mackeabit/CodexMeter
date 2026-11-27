@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('Classic', 'Expanded', 'Both')][string]$Edition = 'Both',
+    [ValidateSet('Classic', 'Expanded', 'Dual', 'Both')][string]$Edition = 'Both',
     [string]$DotNet = 'dotnet',
     [string]$ISCC = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
     [switch]$SkipInstaller
@@ -39,7 +39,7 @@ try {
         Copy-Item -LiteralPath (Join-Path $repo 'docs') -Destination (Join-Path $payload 'docs') -Recurse
         # Record hashes for every shipped file; no user settings or diagnostics enter the payload.
         $files = @(Get-ChildItem -LiteralPath $payload -Recurse -File | Sort-Object FullName | ForEach-Object {
-            @{ path = [IO.Path]::GetRelativePath($payload, $_.FullName).Replace('\','/'); size = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+            @{ path = $_.FullName.Substring($payload.Length).TrimStart('\','/').Replace('\','/'); size = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
         })
         @{ version=$version; edition=$item; runtime=$runtime; architecture='win-x64'; files=$files } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $payload 'manifest.json') -Encoding utf8
         $zip = Join-Path $dist "CodexMeter-$version-$item-Portable-x64.zip"
