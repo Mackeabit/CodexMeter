@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('Classic', 'Expanded', 'Dual', 'Both')][string]$Edition = 'Both',
+    [ValidateSet('Classic', 'Expanded', 'Dual', 'Both', 'All')][string]$Edition = 'All',
     [string]$DotNet = 'dotnet',
     [string]$ISCC = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
     [switch]$SkipInstaller
@@ -16,7 +16,7 @@ $version = [string]$project.Project.PropertyGroup.Version
 $runtime = [string]$project.Project.PropertyGroup.RuntimeFrameworkVersion
 $dist = Join-Path $repo 'dist'
 New-Item -ItemType Directory -Path $dist -Force | Out-Null
-$editions = if ($Edition -eq 'Both') { @('Classic', 'Expanded') } else { @($Edition) }
+$editions = switch ($Edition) { 'All' { @('Classic', 'Expanded', 'Dual') } 'Both' { @('Classic', 'Expanded') } default { @($Edition) } }
 Push-Location $repo
 try {
     foreach ($item in $editions) {

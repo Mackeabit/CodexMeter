@@ -39,7 +39,7 @@ function StartFixture([bool]$ignore = $false) {
     return $p
 }
 try {
-    foreach ($edition in @('Classic','Expanded')) {
+    foreach ($edition in @('Classic','Expanded','Dual')) {
         $latest = Get-Content -LiteralPath (Join-Path $repo "artifacts/latest-$edition.json") -Raw | ConvertFrom-Json
         $payloads[$edition] = $latest.payload
         & $ISCC /Q /DTestMode "/DAppVersion=$version" "/DEdition=$edition" "/DPayloadDir=$($latest.payload)" "/DDistDir=$run" (Join-Path $repo 'installer/CodexMeter.iss')
@@ -67,6 +67,9 @@ try {
     Check ($fixture.WaitForExit(3000)) 'update signals a running application to exit gracefully'
     Check ((Get-FileHash -LiteralPath $managed).Hash -eq (Get-FileHash -LiteralPath (Join-Path $payloads.Expanded 'CodexMeter.dll')).Hash) 'same-version edition switch replaces Classic with Expanded'
     Check (Test-Path -LiteralPath $sentinel) 'upgrade preserves unrelated user files'
+    RunSetup $setupPaths.Dual ($common + @('/TASKS=autostart',('/LOG="' + (Join-Path $run 'dual.log') + '"')))
+    Check ((Get-FileHash -LiteralPath $managed).Hash -eq (Get-FileHash -LiteralPath (Join-Path $payloads.Dual 'CodexMeter.dll')).Hash) 'same-version edition switch replaces Expanded with Dual'
+    Check (Test-Path -LiteralPath $startup) 'Dual switch keeps startup registration'
     # Reinstall without explicit task switches: preserve current autostart state.
     RunSetup $setupPaths.Expanded ($common + @(('/LOG="' + (Join-Path $run 'repair.log') + '"')))
     Check (Test-Path -LiteralPath $startup) 'reinstall preserves existing startup registration'

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.3.0 — 2026-11-27
+
+- New **Dual** edition: Codex and Claude usage as two concentric-ring gauges on the taskbar. Outer ring = 5-hour limit, inner ring = weekly limit, center number = the lower remaining value, red under 20%. Beside each ring, the lowest limit (`5h`/`주`) and the time to its reset (at most four characters).
+- Rings draw on a transparent background so the taskbar material shows through, use tracks tinted with each service color and Segoe UI Variable numbers, and show a taskbar-style hover highlight.
+- Claude limits come from the local Claude Code CLI: one minimal Haiku request every 15 minutes (skipped when the last value is under 10 minutes old, repeated once after a reset). These requests count toward Claude usage. Only percentages, reset times and the update time are stored.
+- Optional `CodexMeter.exe --claude-statusline` command for Claude Code's statusLine setting.
+- Detail window, segmented view, tray icon and tooltip include Claude limits; the tray number is the lowest fresh value.
+- Builds produce all three editions by default; installer tests also switch to Dual. `scripts/build.ps1` runs under Windows PowerShell 5.1 as well as PowerShell 7.
+- Classic and Expanded are unchanged.
+
 ## 2.2.4 — 2026-10-30
 
 - Preserve the floating window's current position when display settings change, including while hidden in the tray. Only correct a position that falls outside the available working area.
