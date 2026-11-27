@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.3.3 — 2026-11-28
+
+- Dual taskbar: the rows beside each ring always spell out `5시간` and `주간` and show the time left until each reset in words ("6일 13시간", "4시간 17분"); an exhausted row shows the time until it can be used again ("2시간 0분 후").
+- Dual taskbar: this full layout (395 DIP) takes the nearest free gap on the taskbar that fits it, scanning from the notification area, instead of shrinking beside the tray. The time-less medium layout is removed; only when no gap fits does the meter fall back to the short token (now also `5시간`/`주간`), then rings only.
+- Classic and Expanded are unchanged.
+
 ## 2.3.2 — 2026-11-27
 
 - Dual: Claude low-usage notifications. Claude uses the same below-20% / below-5% policy as Codex (one warning per stage per reset cycle, survives restarts) with its own history file `notifications-claude-v1.json`. Titles name the service ("Claude 잔여량 20% 미만").
