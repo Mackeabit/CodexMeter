@@ -50,8 +50,9 @@ internal static class RingArtwork
     internal const int RowWidth = 146;
     internal const int WideServiceGap = 9;
     internal const int WideWidth = Pad + 2 * (RingCell + RowGap + RowWidth) + WideServiceGap + Pad;
-    // Two 16 DIP rows need this much height; smaller taskbars keep the short token.
-    internal const int WideMinimumHeight = 40;
+    // Two 16 DIP rows and the 2 DIP between them need 34 DIP. A 40 px taskbar at 100% leaves 36 DIP for the meter
+    // (observed on the user's desktop), which is enough; only a smaller taskbar keeps the short token.
+    internal const int WideMinimumHeight = 2 * 16 + 2;
     internal static readonly Color Low = Color.FromArgb(226, 75, 74);
     internal const string NumberFont = "Segoe UI Variable Display Semib";
     internal const string TokenFont = "Malgun Gothic";

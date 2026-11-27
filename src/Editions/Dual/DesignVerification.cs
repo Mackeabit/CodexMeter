@@ -75,6 +75,24 @@ internal static class DesignVerification
             $"only when no gap anywhere fits the full rows does the meter fall back to the short layout beside the tray ({crowded})");
         var shortBar = TaskbarHost.FindMeterSpace(open, new[] { new System.Drawing.Rectangle(0, 0, 300, 72) }, 2140, 1.5f, (int)(32 * 1.5f));
         check(shortBar != null && shortBar.Value.Width < RingArtwork.WideWidth * 1.5f, "a small-icon taskbar keeps the short layout because two rows would not fit its height");
+
+        // Measured on the user's desktop: 1920x40 taskbar at 100% (dpi 96), apps up to 1123 px, tray icons from 1709 px.
+        // The meter gets 36 DIP of height there (client 40 - 4), which must still take the full rows.
+        var desktopBar = new System.Drawing.Rectangle(0, 0, 1920, 40);
+        var desktopApps = new[] { new System.Drawing.Rectangle(0, 0, 336, 40), new System.Drawing.Rectangle(388, 0, 1123 - 388, 40), new System.Drawing.Rectangle(1709, 0, 1920 - 1709, 40) };
+        int desktopHeight = (int)Math.Round(Math.Min(44 * 1f, Math.Max(30 * 1f, 40 - 4 * 1f)));   // same formula as TaskbarHost at scale 1
+        var desktop = TaskbarHost.FindMeterSpace(desktopBar, desktopApps, 1709 - 6, 1f, desktopHeight);
+        check(desktop?.Width == RingArtwork.WideWidth && desktop.Value.Left >= 1123 && desktop.Value.Right <= 1709,
+            $"the desktop's 40 px taskbar (36 DIP for the meter) gets the full rows between the apps and the tray ({desktop})");
+        using (var image = RingArtwork.Render(RingArtwork.WideWidth, desktopHeight, 1, TaskbarHost.Services(real, false, claudeReal, now), false, now))
+        {
+            int x = RingArtwork.Pad + RingArtwork.RingCell + RingArtwork.RowGap + 6;
+            int cy = desktopHeight / 2;
+            // Codex shows its weekly value, so the 주간 row (below the center) is the tinted one.
+            check(image.GetPixel(x, cy + 3).A > 30 && image.GetPixel(x, cy - RingArtwork.RowHeight + 1).A <= 2, "at 36 DIP the rows are drawn with the shown row tinted");
+            using var composite = RingArtwork.Composite(image, false);
+            composite.Save(Path.Combine(folder, "desktop-40px-100.png"), System.Drawing.Imaging.ImageFormat.Png);
+        }
     }
 
     // The five states agreed for the center number: normal, no 5-hour plan, weekly low, 5-hour exhausted, weekly exhausted.
