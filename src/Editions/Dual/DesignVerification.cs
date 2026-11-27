@@ -79,6 +79,47 @@ internal static class DesignVerification
 
 internal static class ClaudeVerification
 {
+    // Claude low-usage alerts reuse the Codex 20%/5% policy with a separate history file.
+    private static void AlertChecks(string folder, DateTimeOffset now, Action<bool, string> check)
+    {
+        string dir = Path.Combine(folder, "claude-alerts-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        ClaudeReading R(DateTimeOffset updated, double fiveHourLeft, double weeklyLeft) => new(new[] {
+            new Quota(ClaudeReading.Bucket, "Claude", 100 - fiveHourLeft, 300, now.AddHours(2)),
+            new Quota(ClaudeReading.Bucket, "Claude", 100 - weeklyLeft, 10080, now.AddDays(3)) }, updated, "poll");
+        UsageNotification? Observe(UsageAlerts p, ClaudeReading r) => p.Observe(r.AlertSnapshot(), now, true, 135);
+
+        var claude = new UsageAlerts(Path.Combine(dir, "claude.json"), "Claude");
+        check(Observe(claude, R(now, 25, 60)) == null, "Claude above 20 percent does not warn");
+        var first = Observe(claude, R(now, 19, 60));
+        check(first is { Critical: false, Warnings.Count: 1 } && first.Title == "Claude 잔여량 20% 미만" && first.Text.Contains("5시간 19%"),
+            $"Claude below 20 percent warns once with a Claude title ({first?.Title})");
+        check(Observe(claude, R(now, 18, 60)) == null && Observe(new UsageAlerts(Path.Combine(dir, "claude.json"), "Claude"), R(now, 17, 60)) == null,
+            "repeated Claude readings and a restart do not repeat the warning");
+        var critical = Observe(claude, R(now, 4, 60));
+        check(critical is { Critical: true } && critical.Title == "Claude 잔여량 5% 미만", "Claude below 5 percent warns once more as critical");
+
+        var stale = new UsageAlerts(Path.Combine(dir, "stale.json"), "Claude");
+        check(Observe(stale, R(now.AddMinutes(-10), 3, 3)) == null && Observe(stale, R(now, 3, 3)) is { Warnings.Count: 2 },
+            "an old Claude report (file left from earlier) neither warns nor consumes the first fresh warning");
+        var expired = R(now, 2, 60) with { Windows = new[] { new Quota(ClaudeReading.Bucket, "Claude", 98, 300, now.AddMinutes(-1)) } };
+        check(Observe(new UsageAlerts(Path.Combine(dir, "expired.json"), "Claude"), expired) == null,
+            "a Claude window whose reset already passed does not warn on its old value");
+
+        var codex = new UsageAlerts(Path.Combine(dir, "codex.json"));
+        var codexLow = new Snapshot(new[] { new Quota("codex", "Codex", 81, 300, now.AddHours(2)) }, "pro", null, true, "account", now);
+        var codexWarning = codex.Observe(codexLow, now, true, 135);
+        var separate = new UsageAlerts(Path.Combine(dir, "separate.json"), "Claude");
+        check(codexWarning?.Title == "Codex 잔여량 20% 미만" && Observe(separate, R(now, 19, 60)) != null,
+            "Codex and Claude keep separate histories; one service's warning never silences the other");
+
+        var muted = new UsageAlerts(Path.Combine(dir, "muted.json"), "Claude");
+        check(muted.SetMuted(R(now, 30, 60).AlertSnapshot(), now, true) && muted.AnyMuted(R(now, 30, 60).AlertSnapshot()) &&
+            Observe(muted, R(now, 3, 60)) == null, "pausing alerts until the next reset also silences Claude");
+        check(ClaudeUsage.AlertsPath != UsageAlerts.DefaultPath && ClaudeUsage.AlertsPath.EndsWith("notifications-claude-v1.json"),
+            "Claude alert history lives in its own file next to the Codex history");
+    }
+
     internal static void Run(string folder, Action<bool, string> check)
     {
         var now = DateTimeOffset.FromUnixTimeSeconds(1800000000);
@@ -98,6 +139,7 @@ internal static class ClaudeVerification
         output = new StringWriter();
         ClaudeUsage.RunStatusLine(new StringReader("not json"), output, path);
         check(output.ToString().Length > 0 && ClaudeUsage.Deserialize(File.ReadAllText(path))?.FiveHour?.Remaining == 60, "malformed input never breaks Claude Code or erases the last value");
+        AlertChecks(folder, now, check);
         // Shape observed from Claude Code 2.1.332 stream-json (utilization is a 0..1 fraction).
         var stream = new[]
         {

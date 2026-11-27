@@ -10,6 +10,7 @@ CodexMeter에는 분석 수집, 광고, 개발자 서버로의 전송, 원격 �
 - `notifications-v1.json`: 리셋 주기, 알림 단계, 잔여량 등 중복 알림 방지 정보. 계정 식별자가 응답에 있는 경우 해시로 구분하며 원본은 저장하지 않습니다. 계정 식별자가 없는 응답의 계정 전환 판별에는 한계가 있습니다.
 - `last-error.txt`: 예기치 않은 UI 오류의 시각과 예외 종류. 원본 서버 응답과 인증 정보는 기록하지 않습니다.
 - `claude-usage.json` (Dual): Claude 5시간·주간 사용률, 리셋 시각, 갱신 시각. 세션·대화·계정 정보는 저장하지 않습니다.
+- `notifications-claude-v1.json` (Dual): Claude 한도의 리셋 주기, 알림 단계, 잔여량 등 중복 알림 방지 정보. 계정 정보는 저장하지 않습니다.
 - `claude-probe` (Dual): Claude Code CLI 요청을 실행하는 빈 작업 폴더. 프로젝트 파일이 요청에 섞이지 않게 하는 용도입니다.
 
 Dual은 갱신 주기(1분/2분/5분, 기본 1분)마다 로컬 `claude.exe`(Claude Code CLI)를 실행해 짧은 요청을 보냅니다. 인증과 Anthropic 서비스 통신은 Claude Code가 담당하며, CodexMeter는 Claude 인증 정보나 토큰을 직접 읽지 않습니다. 응답에서는 사용량 한도 정보만 읽고 나머지는 저장하지 않습니다. 이 요청은 Claude 사용량에 포함되며, Claude Code 자체의 데이터 처리에는 Anthropic의 정책과 설정이 적용됩니다.

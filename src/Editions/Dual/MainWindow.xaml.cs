@@ -38,6 +38,7 @@ public partial class MainWindow : Window
     private string? error;
     private DateTimeOffset nextPoll = DateTimeOffset.MinValue;
     private readonly UsageAlerts alerts;
+    private readonly UsageAlerts claudeAlerts;
     private Preferences prefs = new();
     private readonly string settingsFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexMeter", "settings.json");
     private static Brush Brush(string color) => new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
@@ -45,6 +46,7 @@ public partial class MainWindow : Window
     {
         this.testing = testing;
         alerts = new UsageAlerts(testing ? null : UsageAlerts.DefaultPath);
+        claudeAlerts = new UsageAlerts(testing ? null : ClaudeUsage.AlertsPath, "Claude");
         InitializeComponent();
         if (!testing) try { if (File.Exists(settingsFile)) prefs = JsonSerializer.Deserialize<Preferences>(File.ReadAllText(settingsFile)) ?? new(); } catch { }
         // Dual refreshes Codex and Claude together; a first run starts at one minute. Saved choices are kept.
@@ -57,9 +59,9 @@ public partial class MainWindow : Window
         Loaded += async (_, _) =>
         {
             PlaceInitial(); KeepVisible();
-            if (!testing) { claudeStore.Refresh(); claude = claudeStore.Current; CreateTray(); if (prefs.Taskbar) { SetTaskbar(true, false); Hide(); } clock.Start(); await RefreshAsync(); }
+            if (!testing) { claudeStore.Refresh(); claude = claudeStore.Current; CreateTray(); CheckClaudeAlert(); if (prefs.Taskbar) { SetTaskbar(true, false); Hide(); } clock.Start(); await RefreshAsync(); }
         };
-        clock.Tick += async (_, _) => { if (!testing && claudeStore.Refresh()) claude = claudeStore.Current; RenderState(); UpdateTray(); UpdateTaskbar(); if (!busy && DateTimeOffset.Now >= nextPoll) await RefreshAsync(); if (!testing) await PollClaudeAsync(); };
+        clock.Tick += async (_, _) => { if (!testing && claudeStore.Refresh()) { claude = claudeStore.Current; CheckClaudeAlert(); } RenderState(); UpdateTray(); UpdateTaskbar(); if (!busy && DateTimeOffset.Now >= nextPoll) await RefreshAsync(); if (!testing) await PollClaudeAsync(); };
         KeyDown += (_, e) => { if (e.Key == Key.Escape) Hide(); if (e.Key == Key.F5) _ = RefreshAsync(); };
         MouseRightButtonUp += (_, _) => ShowSettings();
         Closing += (_, e) => { if (!exiting) { e.Cancel = true; Hide(); } };
@@ -156,10 +158,13 @@ public partial class MainWindow : Window
             RefreshButton.IsEnabled = true; SetDetailRefreshing(claudeBusy); RenderState(); UpdateTray(); UpdateTaskbar();
         }
     }
-    private void CheckAlert()
+    private void CheckAlert() => Notify(alerts.Observe(snapshot, DateTimeOffset.Now, prefs.Alerts && tray != null, StaleAfter.TotalSeconds));
+    // Claude follows the same 20%/5% policy with its own history; readings older than one stale period
+    // (an old file at startup, a statusLine report from long ago) never raise a warning.
+    private void CheckClaudeAlert() => Notify(claudeAlerts.Observe(ClaudeAlertSnapshot, DateTimeOffset.Now, prefs.Alerts && tray != null, StaleAfter.TotalSeconds));
+    private Snapshot? ClaudeAlertSnapshot => claude?.AlertSnapshot();
+    private void Notify(UsageNotification? notification)
     {
-        var notification = alerts.Observe(snapshot, DateTimeOffset.Now, prefs.Alerts && tray != null,
-            Math.Max(180, prefs.IntervalSeconds * 2 + 15));
         if (notification == null || testing) return;
         // OS notification settings control delivery. Do not retry a delivered policy event.
         try { tray?.ShowBalloonTip(5000, notification.Title, notification.Text,
@@ -171,11 +176,19 @@ public partial class MainWindow : Window
         prefs.Alerts = !prefs.Alerts;
         if (!testing) Save();
         nextPoll = DateTimeOffset.MinValue;
+        CheckClaudeAlert();
     }
-    private string AlertPauseTitle => alerts.AnyMuted(snapshot) ? "알림 다시 켜기" : "다음 리셋까지 알림 끄기";
+    // One pause covers both services: it stays until each service's own next reset.
+    private bool AlertsMuted => alerts.AnyMuted(snapshot) || claudeAlerts.AnyMuted(ClaudeAlertSnapshot);
+    private string AlertPauseTitle => AlertsMuted ? "알림 다시 켜기" : "다음 리셋까지 알림 끄기";
+    private bool AlertQuotasKnown => alerts.HasQuotas(snapshot) || claudeAlerts.HasQuotas(ClaudeAlertSnapshot);
+    private string? AlertStorageWarning => alerts.StorageWarning ?? claudeAlerts.StorageWarning;
     private void ToggleAlertPause()
     {
-        alerts.SetMuted(snapshot, DateTimeOffset.Now, !alerts.AnyMuted(snapshot));
+        bool mute = !AlertsMuted;
+        var now = DateTimeOffset.Now;
+        alerts.SetMuted(snapshot, now, mute);
+        claudeAlerts.SetMuted(ClaudeAlertSnapshot, now, mute);
         nextPoll = DateTimeOffset.MinValue;
     }
     public void SetSnapshot(Snapshot? value, string? failure = null) { snapshot = value; error = failure; RenderState(); }
@@ -301,7 +314,7 @@ public partial class MainWindow : Window
         try
         {
             var reading = await claudePoller.PollAsync(lifetime.Token);
-            if (reading != null) { claudeStore.Refresh(); claude = claudeStore.Current ?? reading; }
+            if (reading != null) { claudeStore.Refresh(); claude = claudeStore.Current ?? reading; CheckClaudeAlert(); }
         }
         catch (OperationCanceledException) { }
         finally

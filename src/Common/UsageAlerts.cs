@@ -11,10 +11,10 @@ namespace CodexMeter;
 
 internal sealed record UsageWarning(Quota Quota, int Level);
 
-internal sealed record UsageNotification(IReadOnlyList<UsageWarning> Warnings)
+internal sealed record UsageNotification(IReadOnlyList<UsageWarning> Warnings, string Service = "Codex")
 {
     public bool Critical => Warnings.Any(x => x.Level == 2);
-    public string Title => Critical ? "Codex 잔여량 5% 미만" : "Codex 잔여량 20% 미만";
+    public string Title => Service + (Critical ? " 잔여량 5% 미만" : " 잔여량 20% 미만");
     public string Text => string.Join(Environment.NewLine, Warnings.Take(3).Select(w =>
         $"{w.Quota.Duration} {(Math.Floor(w.Quota.Remaining * 10) / 10).ToString("0.#", CultureInfo.InvariantCulture)}% 남음 · " +
         (w.Quota.Reset is { } reset
@@ -45,12 +45,14 @@ internal sealed class UsageAlerts
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "CodexMeter", "notifications-v1.json");
     private readonly string? path;
+    private readonly string service;
     private AlertHistory history = new();
     private bool loadBlocked;
     public string? StorageWarning { get; private set; }
 
     // A null path is an isolated in-memory policy for UI verification.
-    public UsageAlerts(string? path) { this.path = path; Load(); }
+    // Each service keeps its own history file, so its cycles never mix with another service's.
+    public UsageAlerts(string? path, string service = "Codex") { this.path = path; this.service = service; Load(); }
 
     private void Load()
     {
@@ -196,7 +198,7 @@ internal sealed class UsageAlerts
         }
         // Persist before notifying, so another process/edition cannot repeat the same warning.
         if (!Commit(before) || warnings.Count == 0) return null;
-        return new UsageNotification(warnings);
+        return new UsageNotification(warnings, service);
     }
 
     public bool HasQuotas(Snapshot? snapshot) => snapshot != null && Rows(snapshot).Length != 0;

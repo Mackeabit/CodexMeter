@@ -17,12 +17,17 @@ public sealed record ClaudeReading(IReadOnlyList<Quota> Windows, DateTimeOffset 
     public bool IsStale(DateTimeOffset now) => now - Updated > StaleAfter;
     /// <summary>Windows whose reset has passed are unknown: usage may have refilled since the last report.</summary>
     public IReadOnlyList<Quota> Known(DateTimeOffset now) => Windows.Where(q => !q.ResetPending(now)).ToArray();
+    /// <summary>Input for the shared alert policy: the reading time is the sample time, so old reports are rejected as stale.</summary>
+    internal Snapshot AlertSnapshot() => new(Windows, Bucket, null, null, null, Updated);
 }
 
 public static class ClaudeUsage
 {
     public static string DefaultPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexMeter", "claude-usage.json");
+    /// <summary>Claude's 20%/5% alert history, separate from Codex's notifications-v1.json.</summary>
+    public static string AlertsPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexMeter", "notifications-claude-v1.json");
 
     /// <summary>Extracts rate_limits from the JSON Claude Code passes to a statusLine command. Returns null when absent.</summary>
     public static ClaudeReading? ParseStatusLine(string json, DateTimeOffset now)
