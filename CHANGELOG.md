@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.3.2 — 2026-11-27
 
 - Dual: Claude low-usage notifications. Claude uses the same below-20% / below-5% policy as Codex (one warning per stage per reset cycle, survives restarts) with its own history file `notifications-claude-v1.json`. Titles name the service ("Claude 잔여량 20% 미만").
 - Dual: the notification toggle and "pause until next reset" cover both Codex and Claude. Claude readings older than one stale period (e.g. a file left from an earlier run) never trigger a notification.
