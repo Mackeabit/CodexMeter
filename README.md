@@ -87,6 +87,8 @@ pwsh -File .\scripts\build.ps1 -DotNet C:\tools\dotnet\dotnet.exe -ISCC 'C:\Prog
 
 결과는 `dist`, 테스트 보고서는 `artifacts`에 생성됩니다. 스크립트는 기존 배포 파일을 덮어쓰지 않습니다. 재빌드하려면 해당 배포 파일을 별도 폴더로 보관하거나 버전을 올리세요. `src/Common`은 공통 코드, `src/Editions`는 두 디자인입니다.
 
+릴리스는 버전을 올린 PR을 `main`에 병합하면 GitHub Actions가 빌드·검증 후 자동으로 게시합니다. [릴리스 방법](docs/release-notes/README.md)을 참고하세요.
+
 기본 빌드는 합성 데이터로 파서·화면 렌더링·경로 탐색·알림 정책을 검사하며 실제 계정에 접속하지 않습니다. 설치·교체·제거 검증 방법은 [검증 문서](docs/VERIFICATION.md)에 있습니다.
 
 ## 라이선스와 제보

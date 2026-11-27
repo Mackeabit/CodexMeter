@@ -43,3 +43,5 @@ pwsh -File .\scripts\build.ps1
 ```
 
 The build downloads Microsoft runtime packages to a project-local NuGet cache, runs synthetic tests, and produces EXE/ZIP files in `dist`. See [verification](docs/VERIFICATION.md) and [third-party notices](THIRD-PARTY-NOTICES.md). Never include authentication files or tokens in issues.
+
+Releases are published by GitHub Actions after a version-bump PR is merged into `main`; see [Releasing](docs/release-notes/README.md).

@@ -1,0 +1,91 @@
+name: Release
+# A push to main whose src/CodexMeter.csproj version has no release yet builds all
+# editions, runs every check (including the installer lifecycle), then tags and
+# publishes v<version> with the built files. Pushes that keep an already released
+# version do nothing. Run manually with dry_run to build and verify without publishing.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and verify only; do not tag or publish
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Decide whether this commit is a new release
+        id: plan
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          [xml]$project = Get-Content -LiteralPath src/CodexMeter.csproj
+          $version = [string]$project.Project.PropertyGroup.Version
+          $tag = "v$version"
+          $null = gh release view $tag --repo $env:GITHUB_REPOSITORY 2>&1
+          $released = $LASTEXITCODE -eq 0
+          $tagged = [bool](git tag --list $tag)
+          $dry = $env:DRY_RUN -eq 'true'
+          if (($released -or $tagged) -and -not $dry) { Write-Output "$tag already exists; nothing to publish." }
+          $build = $dry -or -not ($released -or $tagged)
+          $publish = $build -and -not $dry
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "build=$($build.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          "publish=$($publish.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          Write-Output "version=$version build=$build publish=$publish dry_run=$dry"
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        if: steps.plan.outputs.build == 'true'
+        with:
+          global-json-file: global.json
+      - name: Build all editions and run synthetic tests
+        if: steps.plan.outputs.build == 'true'
+        shell: pwsh
+        run: ./scripts/build.ps1
+      - name: Verify installer lifecycle in isolation
+        if: steps.plan.outputs.build == 'true'
+        shell: pwsh
+        run: ./scripts/verify-installers.ps1
+      - name: Write release notes
+        if: steps.plan.outputs.build == 'true'
+        shell: pwsh
+        run: ./scripts/release-notes.ps1 -Version '${{ steps.plan.outputs.version }}' -OutDirectory "$env:RUNNER_TEMP/release" -RunUrl "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" -Repository '${{ github.repository }}'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: steps.plan.outputs.build == 'true'
+        with:
+          name: CodexMeter-${{ steps.plan.outputs.version }}-Windows-x64
+          path: |
+            dist/*
+            ${{ runner.temp }}/release/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Tag and publish the release
+        if: steps.plan.outputs.publish == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = '${{ steps.plan.outputs.version }}'
+          $tag = '${{ steps.plan.outputs.tag }}'
+          $files = @(Get-ChildItem -LiteralPath dist -File | Where-Object { $_.Name -like "CodexMeter-$version-*" -or $_.Name -eq 'SHA256SUMS.txt' } | ForEach-Object FullName)
+          if ($files.Count -ne 7) { throw "Expected 6 packages and SHA256SUMS.txt, found $($files.Count) files." }
+          $title = (Get-Content -LiteralPath "$env:RUNNER_TEMP/release/release-title.txt" -Raw).Trim()
+          gh release create $tag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title $title --notes-file "$env:RUNNER_TEMP/release/release-notes.md" --latest @files
+          if ($LASTEXITCODE -ne 0) { throw 'Release creation failed.' }
