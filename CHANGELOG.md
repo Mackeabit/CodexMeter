@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.3.4 — 2026-11-28
+
+- Dual taskbar: the two rows (5시간/주간 with the time left) now also appear on taskbars 40 px tall at 100% scale, where the meter gets 36 DIP of height. The rows need 34 DIP; the threshold used to be 40 DIP, so such taskbars fell back to the short token.
+- Classic and Expanded are unchanged.
+
 ## 2.3.3 — 2026-11-28
 
 - Dual taskbar: the rows beside each ring always spell out `5시간` and `주간` and show the time left until each reset in words ("6일 13시간", "4시간 17분"); an exhausted row shows the time until it can be used again ("2시간 0분 후").
