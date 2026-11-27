@@ -43,6 +43,14 @@ internal static class RingArtwork
     internal const int RingGap = 4;
     internal const int MinimumWidth = Pad + 2 * RingCell + RingGap + Pad;
     internal const int PreferredWidth = Pad + 2 * (RingCell + TokenGap + TokenWidth) + ServiceGap + Pad;
+    // Wide layout: beside each ring, a 5h row and a 주 row (value and countdown); the row behind the center number
+    // gets a service-colored dot and tint, like the detail window. Used when the taskbar has room for it.
+    internal const int RowGap = 5;
+    internal const int RowWidth = 86;
+    internal const int WideServiceGap = 9;
+    internal const int WideWidth = Pad + 2 * (RingCell + RowGap + RowWidth) + WideServiceGap + Pad;
+    // Two 16 DIP rows need this much height; smaller taskbars keep the short token.
+    internal const int WideMinimumHeight = 40;
     internal static readonly Color Low = Color.FromArgb(226, 75, 74);
     internal const string NumberFont = "Segoe UI Variable Display Semib";
     internal const string TokenFont = "Malgun Gothic";
@@ -101,13 +109,17 @@ internal static class RingArtwork
         float diameter = Math.Min(RingCell - 4, h - 8);
         float outerStroke = Math.Max(3, diameter * .1f), innerStroke = Math.Max(2.5f, diameter * .085f), ringGap = Math.Max(2f, diameter * .065f);
         float cy = h / 2;
-        // Reset tokens need the preferred width; a narrower gap keeps both rings and drops the tokens.
-        bool tokens = w + .01f >= PreferredWidth;
+        // Widest first: rows beside each ring; then the short reset token; a narrow gap keeps only the rings.
+        // One device pixel of slack: a tier width times a fractional scale (275 × 1.5 = 412.5) may be rounded either way.
+        float slack = 1f / scale + .01f;
+        bool rows = w + slack >= WideWidth && h + slack >= WideMinimumHeight;
+        bool tokens = !rows && w + slack >= PreferredWidth;
         using var center = new StringFormat(StringFormat.GenericTypographic) { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap };
         for (int i = 0; i < services.Length; i++)
         {
             var s = services[i];
-            float start = tokens ? Pad + i * (RingCell + TokenGap + TokenWidth + ServiceGap) : Pad + i * (RingCell + RingGap);
+            float start = rows ? Pad + i * (RingCell + RowGap + RowWidth + WideServiceGap)
+                : tokens ? Pad + i * (RingCell + TokenGap + TokenWidth + ServiceGap) : Pad + i * (RingCell + RingGap);
             float cx = start + RingCell / 2f;
             float outerR = (diameter - outerStroke) / 2, innerR = outerR - outerStroke / 2 - ringGap - innerStroke / 2;
             DrawRings(g, cx, cy, outerR, outerStroke, innerR, innerStroke, s, stale, light);
@@ -115,7 +127,8 @@ internal static class RingArtwork
             using var font = Font(NumberFont, text.Length >= 3 ? diameter * .27f : diameter * .34f);
             using var brush = new SolidBrush(s.Warning || s.Alert ? Low : s.Stale ? stale : ink);
             g.DrawString(text, font, brush, new RectangleF(cx - outerR, cy - outerR + .5f, outerR * 2, outerR * 2), center);
-            if (tokens && !s.Warning && s.Shown is Quota shown)
+            if (rows) DrawRows(g, start + RingCell + RowGap, cy, s, now, light, ink, stale);
+            else if (tokens && !s.Warning && s.Shown is Quota shown)
                 DrawToken(g, start + RingCell + TokenGap, cy, shown, s, now, light, ink, stale);
         }
         return bitmap;
@@ -164,6 +177,52 @@ internal static class RingArtwork
         using var left = new StringFormat(StringFormat.GenericTypographic) { LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap };
         g.DrawString(topText, top, topBrush, new RectangleF(x, cy - 15, TokenWidth, 14), left);
         g.DrawString(bottomText, bottom, bottomBrush, new RectangleF(x, cy + 1, TokenWidth, 15), left);
+    }
+
+    internal const int RowHeight = 16;
+    // Row columns inside RowWidth: [dot][label 5h/주][value right-aligned][countdown].
+    internal const float RowLabelX = 8, RowLabelWidth = 15, RowValueRight = 54, RowTimeX = 58, RowTimeWidth = RowWidth - RowTimeX - 1;
+
+    internal static (string Label, string Value, string Time) RowText(RingService s, Quota? q, bool fiveHour, DateTimeOffset now)
+    {
+        string label = fiveHour ? "5h" : "주";
+        if (fiveHour && s.NoFiveHour && q == null) return (label, "없음", "");
+        if (q == null) return (label, "—", "");
+        return (label, Math.Floor(q.Remaining).ToString("0", CultureInfo.InvariantCulture) + "%", ShortCountdown(q, now));
+    }
+
+    // Two rows (5h on top, 주 below) beside a ring. The shown row gets the service dot and a faint tint of its color;
+    // an exhausted row is red. The taskbar version of the detail window's rows.
+    private static void DrawRows(Graphics g, float x, float cy, RingService s, DateTimeOffset now, bool light, Color ink, Color stale)
+    {
+        var muted = light ? Color.FromArgb(92, 92, 92) : Color.FromArgb(176, 176, 176);
+        using var labelFont = Font(TokenFont, 11);
+        using var valueFont = Font(NumberFont, 12);
+        using var timeFont = Font(TokenFont, 11);
+        using var left = new StringFormat(StringFormat.GenericTypographic) { LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap };
+        using var right = new StringFormat(StringFormat.GenericTypographic) { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap };
+        foreach (var (q, fiveHour, top) in new[] { (s.FiveHour, true, cy - RowHeight - 1f), (s.Weekly, false, cy + 1f) })
+        {
+            var (label, value, time) = RowText(s, q, fiveHour, now);
+            bool shown = !s.Warning && s.IsShown(q);
+            bool exhausted = !s.Warning && q is { Remaining: <= 0 } && !q.ResetPending(s.At);
+            bool low = !s.Warning && q != null && q.Remaining < LowThreshold;
+            var row = new RectangleF(x, top, RowWidth, RowHeight);
+            if (shown)
+            {
+                using var tint = new SolidBrush(Color.FromArgb(light ? 44 : 62, s.Stale ? stale : s.Accent));
+                using var path = RoundedRect(row, 3);
+                g.FillPath(tint, path);
+                using var dot = new SolidBrush(s.Stale ? stale : s.Accent);
+                g.FillEllipse(dot, x + 2.5f, top + RowHeight / 2f - 2f, 4, 4);
+            }
+            using var labelBrush = new SolidBrush(s.Stale ? stale : muted);
+            using var valueBrush = new SolidBrush(s.Stale ? stale : s.Warning ? muted : low || exhausted ? Low : value == "없음" ? muted : ink);
+            using var timeBrush = new SolidBrush(s.Stale ? stale : exhausted ? Low : muted);
+            g.DrawString(label, labelFont, labelBrush, new RectangleF(x + RowLabelX, top, RowLabelWidth, RowHeight), left);
+            g.DrawString(value, value == "없음" ? labelFont : valueFont, valueBrush, new RectangleF(x + RowLabelX + RowLabelWidth, top + .5f, RowValueRight - RowLabelX - RowLabelWidth, RowHeight), right);
+            if (time.Length > 0) g.DrawString(time, timeFont, timeBrush, new RectangleF(x + RowTimeX, top, RowTimeWidth, RowHeight), left);
+        }
     }
 
     // Outer = weekly, inner = 5-hour. A plan without a 5-hour limit draws no inner track at all,

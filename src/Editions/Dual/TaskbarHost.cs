@@ -141,10 +141,17 @@ internal sealed class TaskbarHost : Forms.NativeWindow, IDisposable
         var p = position.Value;
         TaskbarNative.SetWindowPos(Handle, IntPtr.Zero, p.X, p.Y, p.Width, p.Height, 0x0010 | 0x0040);
         Present(p.Width, p.Height);
-        Status = p.Width < width ? "표시 중 · 공간이 좁아 리셋 안내 생략" : "표시 중";
+        Status = p.Width >= (int)Math.Round(RingArtwork.WideWidth * scale) ? "표시 중" : p.Width < width ? "표시 중 · 공간이 좁아 리셋 안내 생략" : "표시 중 · 공간이 좁아 간단히 표시";
     }
-    internal static Rectangle? FindMeterSpace(Rectangle area, Rectangle[]? obstacles, int right, float scale, int height) =>
-        FindResponsiveSpace(area, obstacles, right, (int)Math.Round(RingArtwork.PreferredWidth * scale), (int)Math.Ceiling(RingArtwork.MinimumWidth * scale), height, (int)(6 * scale));
+    // The wide layout (two rows per service) when it fits and the taskbar is tall enough; otherwise the existing range
+    // from the short reset token down to rings only. Widths between the tiers would only add empty space.
+    internal static Rectangle? FindMeterSpace(Rectangle area, Rectangle[]? obstacles, int right, float scale, int height)
+    {
+        int gap = (int)(6 * scale);
+        if (height + .01f >= RingArtwork.WideMinimumHeight * scale &&
+            FindSpace(area, obstacles, right, (int)Math.Round(RingArtwork.WideWidth * scale), height, gap) is Rectangle wide) return wide;
+        return FindResponsiveSpace(area, obstacles, right, (int)Math.Round(RingArtwork.PreferredWidth * scale), (int)Math.Ceiling(RingArtwork.MinimumWidth * scale), height, gap);
+    }
     internal static Rectangle? FindSpace(Rectangle area, Rectangle[]? obstacles, int right, int width, int height, int gap)
     {
         right = Math.Min(right, area.Right - gap);

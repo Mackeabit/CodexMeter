@@ -6,6 +6,62 @@ namespace CodexMeter;
 
 internal static class DesignVerification
 {
+    // Wide taskbar layout: two rows (5h, 주) beside each ring, the shown row tinted.
+    private static void WideChecks(string folder, DateTimeOffset now, Quota week, Quota first, Snapshot codex, ClaudeReading claude, Action<bool, string> check)
+    {
+        var real = codex with { Windows = new[] { week with { Used = 10 } } };   // shape observed live: Codex weekly only
+        var claudeReal = claude with { Windows = new[] { claude.Windows[0] with { Used = 23 }, claude.Windows[1] with { Used = 27 } } };
+        foreach (float scale in new[] { 1f, 1.25f, 1.5f, 2f })
+            TaskbarHost.SavePreview(Path.Combine(folder, $"wide-{(int)(scale * 100)}.png"), real, claudeReal, false, scale, RingArtwork.WideWidth, false, now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "wide-light.png"), real, claudeReal, false, 1.5f, RingArtwork.WideWidth, true, now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "wide-both-windows.png"), codex, claude, false, 1.5f, RingArtwork.WideWidth, false, now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "wide-five-hour-exhausted.png"), codex with { Windows = new[] { first with { Used = 100 }, week with { Used = 40 } } }, claude, false, 1.5f, RingArtwork.WideWidth, false, now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "wide-weekly-exhausted.png"), codex with { Windows = new[] { first with { Used = 10 }, week with { Used = 100 } } }, claude, false, 1.5f, RingArtwork.WideWidth, false, now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "wide-stale.png"), codex, claude with { Updated = now.AddHours(-2) }, true, 1.5f, RingArtwork.WideWidth, false, now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "wide-unknown.png"), null, null, false, 1.5f, RingArtwork.WideWidth, false, now);
+
+        // The shown row carries the tint; the other row stays clear. Service 0 rows start at Pad + RingCell + RowGap.
+        var services = TaskbarHost.Services(codex, false, claude, now);
+        using (var image = RingArtwork.Render(RingArtwork.WideWidth, 44, 1, services, false, now))
+        {
+            int x = RingArtwork.Pad + RingArtwork.RingCell + RingArtwork.RowGap + 6;
+            int fiveTop = 22 - RingArtwork.RowHeight - 1 + 2, weekTop = 22 + 1 + 2;
+            check(image.GetPixel(x, fiveTop).A > 30 && image.GetPixel(x, weekTop).A <= 2, "wide layout tints the 5-hour row, which the center number shows");
+        }
+        var weeklyShown = TaskbarHost.Services(real, false, claude, now);
+        using (var image = RingArtwork.Render(RingArtwork.WideWidth, 44, 1, weeklyShown, false, now))
+        {
+            int x = RingArtwork.Pad + RingArtwork.RingCell + RingArtwork.RowGap + 6;
+            check(image.GetPixel(x, 22 + 1 + 2).A > 30 && image.GetPixel(x, 22 - RingArtwork.RowHeight - 1 + 2).A <= 2,
+                "with only a weekly value, the 주 row is the tinted one");
+        }
+        check(RingArtwork.RowText(weeklyShown[0], null, true, now) == ("5h", "없음", "") && RingArtwork.RowText(weeklyShown[0], weeklyShown[0].Weekly, false, now).Value == "90%",
+            "wide rows say 없음 for an account without a 5-hour window and list the weekly value");
+        check(RingArtwork.RowText(services[1], null, true, now).Value == "—", "an unknown row shows a dash");
+
+        using (var probe = new System.Drawing.Bitmap(10, 10))
+        using (var g = System.Drawing.Graphics.FromImage(probe))
+        using (var label = RingArtwork.Font(RingArtwork.TokenFont, 11))
+        using (var value = RingArtwork.Font(RingArtwork.NumberFont, 12))
+        {
+            var fmt = System.Drawing.StringFormat.GenericTypographic;
+            float W(string t, System.Drawing.Font f) => g.MeasureString(t, f, System.Drawing.PointF.Empty, fmt).Width;
+            float labelMax = new[] { "5h", "주" }.Max(t => W(t, label));
+            float valueMax = Math.Max(W("100%", value), W("없음", label));
+            float timeMax = new[] { "6일", "23:59", "59분", "확인", "—" }.Max(t => W(t, label));
+            check(labelMax <= RingArtwork.RowLabelWidth && valueMax <= RingArtwork.RowValueRight - RingArtwork.RowLabelX - RingArtwork.RowLabelWidth && timeMax <= RingArtwork.RowTimeWidth,
+                $"wide row text fits its columns (label {labelMax:0.#}/{RingArtwork.RowLabelWidth}, value {valueMax:0.#}, time {timeMax:0.#}/{RingArtwork.RowTimeWidth:0.#} DIP)");
+        }
+
+        var open = new System.Drawing.Rectangle(0, 0, 2560, 72);
+        var roomy = TaskbarHost.FindMeterSpace(open, new[] { new System.Drawing.Rectangle(0, 0, 300, 72) }, 2140, 1.5f, 66);
+        check(roomy?.Width == (int)Math.Round(RingArtwork.WideWidth * 1.5f), "a roomy taskbar gets the wide layout");
+        var tight = TaskbarHost.FindMeterSpace(open, new[] { new System.Drawing.Rectangle(0, 0, 237, 72), new System.Drawing.Rectangle(560, 0, 2000, 72) }, 2140, 1.5f, 66);
+        check(tight != null && tight.Value.Width < RingArtwork.WideWidth * 1.5f, "a gap too small for the wide layout falls back to the shorter one");
+        var shortBar = TaskbarHost.FindMeterSpace(open, new[] { new System.Drawing.Rectangle(0, 0, 300, 72) }, 2140, 1.5f, (int)(32 * 1.5f));
+        check(shortBar != null && shortBar.Value.Width < RingArtwork.WideWidth * 1.5f, "a small-icon taskbar keeps the short layout because two rows would not fit its height");
+    }
+
     // The five states agreed for the center number: normal, no 5-hour plan, weekly low, 5-hour exhausted, weekly exhausted.
     private static void StateChecks(string folder, DateTimeOffset now, Quota week, Quota first, Snapshot codex, ClaudeReading claude, Action<bool, string> check)
     {
@@ -94,6 +150,7 @@ internal static class DesignVerification
         check(services[0].Center == "63" && services[1].Center == "88", "ring centers show the 5-hour value first, even when the weekly value is lower");
         check(services.All(s => s.Shown?.Minutes == 300 && !s.Blocked) && RingArtwork.Token(services[0], services[0].Shown!, now).Top == "5h", "each reset token names the window the center number shows");
         StateChecks(folder, now, week, first, codex, claude, check);
+        WideChecks(folder, now, week, first, codex, claude, check);
         var low = TaskbarHost.Services(codex with { Windows = new[] { first with { Used = 92 }, week } }, false, claude, now);
         using (var image = RingArtwork.Render(RingArtwork.PreferredWidth, 44, 1, low, false, now))
         {
