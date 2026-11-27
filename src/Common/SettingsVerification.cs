@@ -52,7 +52,12 @@ internal static class SettingsVerification
             bool visible = expected switch {
                 WindowView.Compact => window.Compact.Visibility == Visibility.Visible,
                 WindowView.Segmented => window.SegmentRows.Visibility == Visibility.Visible,
+#if DUAL
+                // Dual replaces the shared detail layout with its own two-service view.
+                _ => window.DetailPanel?.Visibility == Visibility.Visible
+#else
                 _ => window.Expanded.Visibility == Visibility.Visible
+#endif
             };
             var choices = Views(window.BuildSettingsMenu()).Items.Cast<MenuItem>().ToArray();
             check(visible && choices.Count(item => item.IsChecked) == 1 && Find(choices, title).IsChecked,

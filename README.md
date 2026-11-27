@@ -12,7 +12,7 @@ OpenAI·Anthropic과 무관한 커뮤니티 프로젝트입니다. Codex가 반�
 | --- | --- | --- |
 | **Classic** | 기존의 작은 막대·숫자를 유지하고 오른쪽에 리셋 날짜와 시간을 표시 | 2.0.3 계열 |
 | **Expanded** | 한도가 하나면 크게, 두 개면 세로로 정렬. 리셋 날짜와 시간을 함께 표시 | 2.1.2 계열 |
-| **Dual** | Codex와 Claude를 이중 링 두 개로 표시. 바깥 링은 5시간, 안쪽 링은 주간 한도이고 가운데 숫자는 더 적게 남은 값. 링 옆에 그 한도(`5h`/`주`)와 리셋까지 남은 시간 | 2.3.0 신규 |
+| **Dual** | Codex와 Claude를 같은 비중으로 표시. 작업표시줄에는 이중 링 두 개, 바깥 링은 5시간, 안쪽 링은 주간 한도이고 가운데 숫자는 더 적게 남은 값. 링 옆에 그 한도(`5h`/`주`)와 리셋까지 남은 시간 | 2.3.0 신규 |
 
 ![Classic: 두 개 한도 표시 예시](docs/images/classic.png)
 
@@ -26,7 +26,7 @@ OpenAI·Anthropic과 무관한 커뮤니티 프로젝트입니다. Codex가 반�
 
 지원 대상은 Windows 11 x64이며, Windows 10 22H2 x64는 별도 검증하지 않았습니다. ARM64 네이티브 빌드는 제공하지 않습니다. 이 PC에서 로그인한 Codex와 호환되는 `codex.exe`가 필요합니다. **.NET 실행환경은 포함되어 있어 별도 설치할 필요가 없습니다.**
 
-1. Releases에서 원하는 디자인의 `CodexMeter-2.3.0-Classic-Setup-x64.exe`, `CodexMeter-2.3.0-Expanded-Setup-x64.exe` 또는 `CodexMeter-2.3.0-Dual-Setup-x64.exe`를 받습니다.
+1. Releases에서 원하는 디자인의 `CodexMeter-2.3.1-Classic-Setup-x64.exe`, `CodexMeter-2.3.1-Expanded-Setup-x64.exe` 또는 `CodexMeter-2.3.1-Dual-Setup-x64.exe`를 받습니다.
 2. 설치 마법사를 실행합니다. 관리자 권한 없이 현재 사용자에게 설치되며, 자동 실행 여부를 선택할 수 있습니다.
 3. 시작 메뉴에서 Codex Meter를 실행합니다. Codex를 찾지 못하면 트레이 메뉴의 **연결 및 자동 실행**에서 자동 탐색하거나 CLI용 `codex.exe`를 선택하세요.
 
@@ -35,7 +35,7 @@ OpenAI·Anthropic과 무관한 커뮤니티 프로젝트입니다. Codex가 반�
 현재 배포 EXE는 **코드 서명이 없습니다**. Windows SmartScreen의 알 수 없는 게시자 경고가 나타날 수 있습니다. 이 저장소의 Releases에서 받았는지 확인하고, 배포된 `SHA256SUMS.txt`와 해시를 비교할 수 있습니다. 해시는 코드 서명을 대신하지 않습니다.
 
 ```powershell
-Get-FileHash .\CodexMeter-2.3.0-Classic-Setup-x64.exe -Algorithm SHA256
+Get-FileHash .\CodexMeter-2.3.1-Classic-Setup-x64.exe -Algorithm SHA256
 ```
 
 ## 사용법
@@ -56,8 +56,8 @@ Dual은 이 PC의 Claude Code CLI로 Claude 사용량을 읽습니다. Claude Pr
 1. Claude Code CLI를 설치합니다: `irm https://claude.ai/install.ps1 | iex`
 2. 새 터미널에서 `claude auth login`으로 로그인합니다. Claude 데스크톱 앱의 로그인과는 별개입니다.
 
-- Dual은 15분마다 아주 짧은 요청(Haiku, 도구·MCP·설정 없음, 세션 저장 안 함)을 보내고, 응답에 함께 오는 5시간·주간 한도 정보를 읽습니다. **이 요청도 Claude 사용량에 조금 포함됩니다**(1회 약 1천 토큰). 마지막 값이 10분 이내면 요청하지 않고, 리셋 시각이 지나면 한 번 다시 확인합니다. 작업표시줄 메뉴의 **새로고침**은 바로 다시 확인합니다.
-- 30분이 지난 값은 회색으로 표시합니다. 리셋 시각이 지난 한도는 다시 확인할 때까지 `—`로 표시하며, 리셋되었다고 추측하지 않습니다.
+- Dual은 **갱신 주기마다**(트레이 메뉴 **갱신 주기**: 1분/2분/5분, Dual 기본값 1분) Codex와 Claude를 함께 조회합니다. Claude는 아주 짧은 요청(Haiku, 도구·MCP·설정 없음, 세션 저장 안 함)을 보내 응답에 함께 오는 5시간·주간 한도 정보를 읽습니다. **이 요청도 Claude 사용량에 조금 포함됩니다**(1회 약 1천 토큰, 1분 주기면 하루 최대 약 1,440회). 사용량이 신경 쓰이면 갱신 주기를 5분으로 바꾸세요. 마지막 값이 한 주기보다 새것이면 요청하지 않고, 리셋 시각이 지나면 한 번 다시 확인합니다. 작업표시줄 메뉴의 **새로고침**은 바로 다시 확인합니다.
+- 갱신 주기의 두 배(최소 3분)가 지나도 새 값이 없으면 회색으로 표시합니다. 리셋 시각이 지난 한도는 다시 확인할 때까지 `—`로 표시하며, 리셋되었다고 추측하지 않습니다.
 - Claude Code의 statusLine 명령으로 `CodexMeter.exe --claude-statusline`을 등록하면, 터미널에서 Claude Code를 쓸 때마다 요청 없이 값이 갱신됩니다(선택 사항).
 - Claude 잔여량 알림은 아직 제공하지 않습니다. Codex 알림은 기존과 같습니다.
 
