@@ -34,6 +34,12 @@ internal static class DesignVerification
         var bothGone = Codex(first with { Used = 100 }, week with { Used = 100 });
         check(bothGone.Blocking == bothGone.Weekly, "with both windows exhausted, use resumes at the later reset");
         check(!(Codex(first, week) with { Warning = true }).Blocked, "a server denial keeps its own warning instead of the blocked state");
+        var resetPassed = Codex(first with { Used = 100, Reset = now.AddMinutes(-1) }, week with { Used = 40 });
+        check(!resetPassed.Blocked && resetPassed.Center == "60",
+            "an exhausted 5-hour window whose reset time has passed no longer marks the service unusable (offline or before the next refresh)");
+        var claudeWeeklyOnly = TaskbarHost.Services(codex, false, claude with { Windows = new[] { claude.Windows[1] } }, now)[1];
+        check(!claudeWeeklyOnly.NoFiveHour && claudeWeeklyOnly.Center == "46",
+            "a Claude reading with only a weekly window keeps 5-hour unknown instead of claiming the account has none");
 
         // Geometry: the inner (5-hour) track disappears for a plan without that limit.
         int InnerPixels(RingService s)
@@ -50,7 +56,7 @@ internal static class DesignVerification
         TaskbarHost.SavePreview(Path.Combine(folder, "rings-no-five-hour.png"), codex with { Windows = new[] { week } }, claude, false, 1.5f, light: false, now: now);
         string hover = TaskbarHost.HoverText(codex with { Windows = new[] { first with { Used = 100 }, week } }, false, claude, now);
         check(hover.Contains("사용 불가") && hover.Contains("• 주간"), $"hover text marks the shown window and the unusable state ({hover.Replace("\n", " / ")})");
-        check(TaskbarHost.HoverText(codex with { Windows = new[] { week } }, false, claude, now).Contains("요금제 한도 아님"), "hover text says the plan has no 5-hour limit");
+        check(TaskbarHost.HoverText(codex with { Windows = new[] { week } }, false, claude, now).Contains("주간 한도만 있음"), "hover text says this account has no 5-hour limit");
     }
 
     internal static void Run(string folder, Action<bool, string> check)

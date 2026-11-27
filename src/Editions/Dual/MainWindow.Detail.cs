@@ -186,14 +186,14 @@ public partial class MainWindow
         Grid.SetColumn(value, 1);
         row.Children.Add(value);
         var reset = new TextBlock { FontSize = 11, Foreground = Brush(exhausted && !s.Stale ? LowText : MutedText), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        reset.Text = absent ? "요금제 한도 아님" : q == null ? "정보 없음" : exhausted ? $"소진 · {RingArtwork.ShortCountdown(q, now)} 후 재개" : q.Countdown(now);
+        reset.Text = absent ? "주간 한도만 있음" : q == null ? "정보 없음" : exhausted ? $"소진 · {RingArtwork.ShortCountdown(q, now)} 후 재개" : q.Countdown(now);
         Grid.SetColumn(reset, 2);
         row.Children.Add(reset);
         // Negative left margin keeps the text aligned with the header while the tint gets a little padding.
         var wrap = new Border { Child = row, CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 1, 5, 1), Margin = new Thickness(-5, 1, 0, 1),
             Background = shown ? new SolidColorBrush(Color.FromArgb(38, accent.R, accent.G, accent.B)) : Brushes.Transparent };
-        wrap.ToolTip = absent ? "이 요금제에는 5시간 한도가 없습니다" : q?.Reset is DateTimeOffset at ? $"{at.ToLocalTime():M월 d일 HH:mm} 리셋 (PC 현지시간)" : "리셋 시간 미제공";
-        System.Windows.Automation.AutomationProperties.SetName(wrap, $"{s.Short} {label} {value.Text}" + (absent ? ", 요금제 한도 아님" : $" 남음, {reset.Text}") + (shown ? ", 링 가운데 표시" : ""));
+        wrap.ToolTip = absent ? "Codex가 이 계정에 5시간 한도를 보내지 않습니다. 주간 한도만 있는 것으로 보고 사용 가능으로 표시합니다." : q?.Reset is DateTimeOffset at ? $"{at.ToLocalTime():M월 d일 HH:mm} 리셋 (PC 현지시간)" : "리셋 시간 미제공";
+        System.Windows.Automation.AutomationProperties.SetName(wrap, $"{s.Short} {label} {value.Text}" + (absent ? ", 이 계정은 주간 한도만 있음" : $" 남음, {reset.Text}") + (shown ? ", 링 가운데 표시" : ""));
         return wrap;
     }
 

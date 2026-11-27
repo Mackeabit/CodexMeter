@@ -217,8 +217,8 @@ public static class Verification
                     window.SetSnapshot(balanced with { Windows = new[] { balanced.Windows[1] } });
                     await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                     window.Capture(Path.Combine(folder, "detail-no-five-hour.png"));
-                    Check(SectionText(window.CodexSection).Contains("없음") && SectionText(window.CodexSection).Contains("요금제 한도 아님") && !SectionText(window.CodexSection).Contains("사용 불가"),
-                        $"a plan without a 5-hour limit says so and stays usable ({SectionText(window.CodexSection)})");
+                    Check(SectionText(window.CodexSection).Contains("없음") && SectionText(window.CodexSection).Contains("주간 한도만 있음") && !SectionText(window.CodexSection).Contains("사용 불가"),
+                        $"an account without a 5-hour limit says so and stays usable ({SectionText(window.CodexSection)})");
                     window.SetSnapshot(balanced);
                     window.SetClaude(null);
                     await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);

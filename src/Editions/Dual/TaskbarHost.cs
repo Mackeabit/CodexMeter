@@ -185,13 +185,14 @@ internal sealed class TaskbarHost : Forms.NativeWindow, IDisposable
         var codexWeek = Pick(codexRows, 10080);
         bool codexWarning = codex?.Allowed == false || (codexStale && codex == null);
         var known = claude?.Known(now) ?? Array.Empty<Quota>();
-        // "No 5-hour limit" only when a reading arrived without that window; a filtered or failed value stays unknown.
+        // "No 5-hour limit" only when Codex answered without that window (observed for a prolite account: primary =
+        // weekly, secondary = null). Claude Pro/Max always have one, and a Claude reading can legitimately carry a single
+        // window (older event shape), so a missing Claude 5-hour value always stays unknown.
         bool codexNoFive = codexRows.Length > 0 && codexFive == null;
-        bool claudeNoFive = claude != null && claude.Windows.Count > 0 && !claude.Windows.Any(q => q.Minutes == 300);
         return new[]
         {
-            new RingService("Codex", RingService.CodexAccent, codexFive, codexWeek, codexStale, codexWarning, codexNoFive),
-            new RingService("Claude", RingService.ClaudeAccent, Pick(known.ToArray(), 300), Pick(known.ToArray(), 10080), claudeStale ?? claude?.IsStale(now) == true, false, claudeNoFive),
+            new RingService("Codex", RingService.CodexAccent, codexFive, codexWeek, codexStale, codexWarning, codexNoFive, now),
+            new RingService("Claude", RingService.ClaudeAccent, Pick(known.ToArray(), 300), Pick(known.ToArray(), 10080), claudeStale ?? claude?.IsStale(now) == true, false, false, now),
         };
     }
     internal static string HoverText(Snapshot? codex, bool codexStale, ClaudeReading? claude, DateTimeOffset now, bool? claudeStale = null)
@@ -199,7 +200,7 @@ internal sealed class TaskbarHost : Forms.NativeWindow, IDisposable
         string Block(RingService s, bool old, bool denied, string? note) =>
             s.Short + (note == null ? "" : " · " + note) + (s.Blocking is Quota b ? $" · 사용 불가 ({RingArtwork.ShortCountdown(b, now)} 후 재개)" : "") + "\n" +
             string.Join("\n", new[] { ("5시간", s.FiveHour), ("주간", s.Weekly) }.Where(p => p.Item2 != null).Select(p => (s.IsShown(p.Item2) ? "• " : "") + p.Item1 + " · " + UsageHover.Describe(p.Item2, old, denied, now).Replace("\n", " · ")))
-            + (s.NoFiveHour ? "\n5시간 · 요금제 한도 아님" : "")
+            + (s.NoFiveHour ? "\n5시간 · 없음 (주간 한도만 있음)" : "")
             + (s.FiveHour == null && s.Weekly == null ? "사용량 미확인" : "");
         var services = Services(codex, codexStale, claude, now, claudeStale);
         string claudeNote = claude == null ? "Claude Code 사용 후 표시" : $"{claude.Updated.ToLocalTime():HH:mm} 기준";

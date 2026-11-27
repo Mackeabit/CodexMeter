@@ -9,17 +9,20 @@ namespace CodexMeter;
 
 /// <summary>
 /// One service on the taskbar: outer ring = weekly window, inner ring = 5-hour window.
-/// <paramref name="NoFiveHour"/> means a successful reading had no 5-hour window at all (a plan without that limit),
-/// which is different from a 5-hour value that is merely unknown.
+/// <paramref name="NoFiveHour"/> means Codex's response for this account carried no 5-hour window at all,
+/// which is different from a 5-hour value that is merely unknown. <paramref name="At"/> is the render time.
 /// </summary>
-internal sealed record RingService(string Short, Color Accent, Quota? FiveHour, Quota? Weekly, bool Stale, bool Warning, bool NoFiveHour = false)
+internal sealed record RingService(string Short, Color Accent, Quota? FiveHour, Quota? Weekly, bool Stale, bool Warning, bool NoFiveHour = false, DateTimeOffset At = default)
 {
     public static readonly Color CodexAccent = Color.FromArgb(222, 128, 94);
     public static readonly Color ClaudeAccent = Color.FromArgb(143, 134, 230);
     /// <summary>The center number: the 5-hour window while it has anything left, otherwise the weekly window.</summary>
     public Quota? Shown => FiveHour is { Remaining: > 0 } ? FiveHour : Weekly ?? FiveHour;
-    /// <summary>A window at 0% blocks use until it resets; with both exhausted, use resumes at the later reset.</summary>
-    public Quota? Blocking => Warning ? null : new[] { FiveHour, Weekly }.Where(q => q is { Remaining: <= 0 })
+    /// <summary>
+    /// A window at 0% blocks use until it resets; with both exhausted, use resumes at the later reset.
+    /// Once its reset time has passed the old 0% no longer proves anything, so it stops blocking.
+    /// </summary>
+    public Quota? Blocking => Warning ? null : new[] { FiveHour, Weekly }.Where(q => q is { Remaining: <= 0 } && !q.ResetPending(At))
         .OrderByDescending(q => q!.Reset ?? DateTimeOffset.MaxValue).FirstOrDefault();
     public bool Blocked => Blocking != null;
     /// <summary>Red center: blocked, or the shown window under the low threshold.</summary>

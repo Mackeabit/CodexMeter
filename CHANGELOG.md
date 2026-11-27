@@ -4,9 +4,9 @@
 
 - Dual: Claude low-usage notifications. Claude uses the same below-20% / below-5% policy as Codex (one warning per stage per reset cycle, survives restarts) with its own history file `notifications-claude-v1.json`. Titles name the service ("Claude 잔여량 20% 미만").
 - Dual: the notification toggle and "pause until next reset" cover both Codex and Claude. Claude readings older than one stale period (e.g. a file left from an earlier run) never trigger a notification.
-- Dual: the ring center shows the 5-hour value first, falling back to the weekly value when the plan has no 5-hour limit or it is used up. Rings are swapped: outer = weekly, inner = 5-hour.
-- Dual: the detail window marks the row the center number comes from with a dot and a tint of the service color. A plan without a 5-hour limit shows "없음 · 요금제 한도 아님" and draws no inner ring, unlike an unknown value (`—`).
-- Dual: a limit at 0% marks the service unusable: a red "사용 불가" badge, "소진 · 2:59 후 재개" on that row, and `불가` with the time until use resumes beside the taskbar ring. The tray tooltip and hover text say the same.
+- Dual: the ring center shows the 5-hour value first, falling back to the weekly value when Codex reports no 5-hour limit for the account or the 5-hour limit is used up. Rings are swapped: outer = weekly, inner = 5-hour.
+- Dual: the detail window marks the row the center number comes from with a dot and a tint of the service color. When Codex reports no 5-hour window for the account, the row shows "없음 · 주간 한도만 있음" and draws no inner ring, unlike an unknown value (`—`).
+- Dual: a limit at 0% marks the service unusable: a red "사용 불가" badge, "소진 · 2:59 후 재개" on that row, and `불가` with the time until use resumes beside the taskbar ring. The tray tooltip and hover text say the same. A 0% window whose reset time has passed no longer counts as unusable.
 - Classic and Expanded are unchanged.
 
 ## 2.3.1 — 2026-11-27
