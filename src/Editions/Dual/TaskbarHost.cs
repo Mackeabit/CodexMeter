@@ -141,16 +141,28 @@ internal sealed class TaskbarHost : Forms.NativeWindow, IDisposable
         var p = position.Value;
         TaskbarNative.SetWindowPos(Handle, IntPtr.Zero, p.X, p.Y, p.Width, p.Height, 0x0010 | 0x0040);
         Present(p.Width, p.Height);
-        Status = p.Width >= (int)Math.Round(RingArtwork.WideWidth * scale) ? "표시 중" : p.Width < width ? "표시 중 · 공간이 좁아 리셋 안내 생략" : "표시 중 · 공간이 좁아 간단히 표시";
+        Status = p.Width >= (int)Math.Round(RingArtwork.WideWidth * scale) ? "표시 중"
+            : p.Width >= (int)Math.Round(RingArtwork.MediumWidth * scale) ? "표시 중 · 공간이 좁아 리셋 시간은 툴팁에 표시"
+            : p.Width < width ? "표시 중 · 공간이 좁아 리셋 안내 생략" : "표시 중 · 공간이 좁아 간단히 표시";
     }
-    // The wide layout (two rows per service) when it fits and the taskbar is tall enough; otherwise the existing range
-    // from the short reset token down to rings only. Widths between the tiers would only add empty space.
+    // The meter stays in the free gap nearest the notification area (where it has always been) and takes the richest
+    // layout that fits that gap: rows with countdown, rows without countdown, the short token, then rings only.
+    // It never jumps to a wider gap elsewhere on the taskbar just to get a wider layout.
     internal static Rectangle? FindMeterSpace(Rectangle area, Rectangle[]? obstacles, int right, float scale, int height)
     {
         int gap = (int)(6 * scale);
-        if (height + .01f >= RingArtwork.WideMinimumHeight * scale &&
-            FindSpace(area, obstacles, right, (int)Math.Round(RingArtwork.WideWidth * scale), height, gap) is Rectangle wide) return wide;
-        return FindResponsiveSpace(area, obstacles, right, (int)Math.Round(RingArtwork.PreferredWidth * scale), (int)Math.Ceiling(RingArtwork.MinimumWidth * scale), height, gap);
+        int minimum = (int)Math.Ceiling(RingArtwork.MinimumWidth * scale);
+        if (FindSpace(area, obstacles, right, minimum, height, gap) is not Rectangle anchor) return null;
+        // Left edge of that gap: the nearest obstacle to the left (plus spacing) or the taskbar start.
+        int left = obstacles!.Where(r => r.Top < anchor.Bottom && anchor.Top < r.Bottom && r.Right + gap <= anchor.Left)
+            .Select(r => r.Right + gap).DefaultIfEmpty(gap).Max();
+        int available = anchor.Right - left;
+        bool tall = height + .01f >= RingArtwork.WideMinimumHeight * scale;
+        int Scaled(int dip) => (int)Math.Round(dip * scale);
+        int width = tall && available >= Scaled(RingArtwork.WideWidth) ? Scaled(RingArtwork.WideWidth)
+            : tall && available >= Scaled(RingArtwork.MediumWidth) ? Scaled(RingArtwork.MediumWidth)
+            : Math.Clamp(available, minimum, Scaled(RingArtwork.PreferredWidth));
+        return new Rectangle(anchor.Right - width, anchor.Top, width, anchor.Height);
     }
     internal static Rectangle? FindSpace(Rectangle area, Rectangle[]? obstacles, int right, int width, int height, int gap)
     {

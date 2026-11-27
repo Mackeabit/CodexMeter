@@ -51,6 +51,11 @@ internal static class DesignVerification
             float timeMax = new[] { "6일", "23:59", "59분", "확인", "—" }.Max(t => W(t, label));
             check(labelMax <= RingArtwork.RowLabelWidth && valueMax <= RingArtwork.RowValueRight - RingArtwork.RowLabelX - RingArtwork.RowLabelWidth && timeMax <= RingArtwork.RowTimeWidth,
                 $"wide row text fits its columns (label {labelMax:0.#}/{RingArtwork.RowLabelWidth}, value {valueMax:0.#}, time {timeMax:0.#}/{RingArtwork.RowTimeWidth:0.#} DIP)");
+            using var smallValue = RingArtwork.Font(RingArtwork.NumberFont, 10.5f);
+            float mediumValueRoom = RingArtwork.MediumRowWidth - 1 - RingArtwork.MediumLabelX - RingArtwork.MediumLabelWidth;
+            float mediumValueMax = new[] { W("99%", value), W("100%", smallValue), W("없음", label) }.Max();
+            check(labelMax <= RingArtwork.MediumLabelWidth && mediumValueMax <= mediumValueRoom,
+                $"medium row text fits its packed columns (label {labelMax:0.#}/{RingArtwork.MediumLabelWidth}, value {mediumValueMax:0.#}/{mediumValueRoom:0.#} DIP)");
         }
 
         var open = new System.Drawing.Rectangle(0, 0, 2560, 72);
@@ -58,6 +63,25 @@ internal static class DesignVerification
         check(roomy?.Width == (int)Math.Round(RingArtwork.WideWidth * 1.5f), "a roomy taskbar gets the wide layout");
         var tight = TaskbarHost.FindMeterSpace(open, new[] { new System.Drawing.Rectangle(0, 0, 237, 72), new System.Drawing.Rectangle(560, 0, 2000, 72) }, 2140, 1.5f, 66);
         check(tight != null && tight.Value.Width < RingArtwork.WideWidth * 1.5f, "a gap too small for the wide layout falls back to the shorter one");
+        // The case seen live: a wide free stretch far left, a smaller gap next to the tray. The meter stays by the tray.
+        // Start button area 0..300, free 300..900 (wide enough for anything), app buttons 900..(tray - gap px).
+        var start = new System.Drawing.Rectangle(0, 0, 300, 72);
+        int Gap(int px) => 2140 - px;   // left edge of a free gap of px pixels ending at the tray edge
+        var byTray = TaskbarHost.FindMeterSpace(open, new[] { start, new System.Drawing.Rectangle(900, 0, Gap(360) - 900, 72) }, 2140, 1.5f, 66);
+        check(byTray?.Right > Gap(360) && byTray.Value.Width == (int)Math.Round(RingArtwork.MediumWidth * 1.5f),
+            $"a gap by the tray too small for the wide layout keeps the meter there with rows but no countdown ({byTray})");
+        var smallByTray = TaskbarHost.FindMeterSpace(open, new[] { start, new System.Drawing.Rectangle(900, 0, Gap(250) - 900, 72) }, 2140, 1.5f, 66);
+        check(smallByTray?.Right > Gap(250) && smallByTray.Value.Width < RingArtwork.MediumWidth * 1.5f,
+            $"a smaller gap by the tray keeps the meter there with the short layout instead of jumping left ({smallByTray})");
+        // Measured live (2560x72 taskbar at 150%): last app button ends at 1845, notification area starts at 2143.
+        var observed = new[] { new System.Drawing.Rectangle(715, 0, 1845 - 715, 72), new System.Drawing.Rectangle(2143, 0, 417, 72) };
+        var live = TaskbarHost.FindMeterSpace(new System.Drawing.Rectangle(0, 0, 2560, 72), observed, 2143 - 9, 1.5f, 66);
+        check(live?.Width == (int)Math.Round(RingArtwork.MediumWidth * 1.5f) && live.Value.Left >= 1845,
+            $"the gap measured beside the tray on this PC gets the medium rows ({live})");
+        foreach (float scale in new[] { 1f, 1.5f })
+            TaskbarHost.SavePreview(Path.Combine(folder, $"medium-{(int)(scale * 100)}.png"), real, claudeReal, false, scale, RingArtwork.MediumWidth, false, now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "medium-light.png"), real, claudeReal, false, 1.5f, RingArtwork.MediumWidth, true, now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "medium-five-hour-exhausted.png"), codex with { Windows = new[] { first with { Used = 100 }, week with { Used = 40 } } }, claude, false, 1.5f, RingArtwork.MediumWidth, false, now);
         var shortBar = TaskbarHost.FindMeterSpace(open, new[] { new System.Drawing.Rectangle(0, 0, 300, 72) }, 2140, 1.5f, (int)(32 * 1.5f));
         check(shortBar != null && shortBar.Value.Width < RingArtwork.WideWidth * 1.5f, "a small-icon taskbar keeps the short layout because two rows would not fit its height");
     }
@@ -90,6 +114,16 @@ internal static class DesignVerification
         var bothGone = Codex(first with { Used = 100 }, week with { Used = 100 });
         check(bothGone.Blocking == bothGone.Weekly, "with both windows exhausted, use resumes at the later reset");
         check(!(Codex(first, week) with { Warning = true }).Blocked, "a server denial keeps its own warning instead of the blocked state");
+        var blockedPair = TaskbarHost.Services(codex with { Windows = new[] { first with { Used = 100 }, week } }, false, claude, now);
+        var blockedStale = TaskbarHost.Services(codex with { Windows = new[] { first with { Used = 100 }, week } }, true, claude, now);
+        check(MainWindow.TrayBlocked(blockedPair) && !MainWindow.TrayBlocked(TaskbarHost.Services(codex, false, claude, now)) && !MainWindow.TrayBlocked(blockedStale),
+            "the tray marks a fresh unusable service, not a normal or outdated one");
+        using (var trayRed = TrayArtwork.Render("60", 32, false, RingArtwork.Low))
+        using (var trayPlain = TrayArtwork.Render("60", 32, false))
+        {
+            int Red(System.Drawing.Bitmap b) => Enumerable.Range(0, 32).Sum(x => Enumerable.Range(0, 32).Count(y => b.GetPixel(x, y) is { A: > 200, R: > 180, G: < 100, B: < 100 }));
+            check(Red(trayRed) > 20 && Red(trayPlain) == 0, "the tray number turns red while a service is unusable and stays white otherwise");
+        }
         var resetPassed = Codex(first with { Used = 100, Reset = now.AddMinutes(-1) }, week with { Used = 40 });
         check(!resetPassed.Blocked && resetPassed.Center == "60",
             "an exhausted 5-hour window whose reset time has passed no longer marks the service unusable (offline or before the next refresh)");
@@ -232,6 +266,16 @@ internal static class ClaudeVerification
             Observe(muted, R(now, 3, 60)) == null, "pausing alerts until the next reset also silences Claude");
         check(ClaudeUsage.AlertsPath != UsageAlerts.DefaultPath && ClaudeUsage.AlertsPath.EndsWith("notifications-claude-v1.json"),
             "Claude alert history lives in its own file next to the Codex history");
+
+        // Notices held while Windows does not accept notifications (Do Not Disturb reports "busy").
+        var queue = new NoticeQueue();
+        var claude20 = Observe(new UsageAlerts(null, "Claude"), R(now, 19, 60))!;
+        var claude5 = Observe(new UsageAlerts(null, "Claude"), R(now, 3, 60))!;
+        queue.Add(codexWarning!, now); queue.Add(claude20, now.AddSeconds(1)); queue.Add(claude5, now.AddSeconds(2));
+        check(queue.Count == 2 && queue.Next(now)?.Service == "Codex" && queue.Next(now)?.Title == "Claude 잔여량 5% 미만" && queue.Next(now) == null,
+            "held notices keep one per service in arrival order, and a newer Claude notice replaces the older one");
+        queue.Add(claude20, now);
+        check(queue.Next(now + NoticeQueue.MaxAge + TimeSpan.FromMinutes(1)) == null, "a notice held longer than six hours is dropped instead of shown late");
     }
 
     internal static void Run(string folder, Action<bool, string> check)

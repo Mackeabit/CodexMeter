@@ -9,6 +9,9 @@
 - Dual: a limit at 0% marks the service unusable: a red "사용 불가" badge, "소진 · 2:59 후 재개" on that row, and `불가` with the time until use resumes beside the taskbar ring. The tray tooltip and hover text say the same. A 0% window whose reset time has passed no longer counts as unusable.
 - Dual: the compact ("작게") view shows Codex and Claude side by side, each with a small ring (same center rule), the window its number comes from or "사용 불가", and the countdown. It used to show only Codex's lowest window.
 - Dual taskbar: when there is room (275 DIP, taskbar at least 40 DIP tall), each ring gets two rows beside it, `5h` and `주`, with value and countdown; the row behind the center number gets the service dot and tint, and an exhausted row is red with its resume time. Narrower gaps keep the short `5h`/`주` token, then rings only.
+- Dual taskbar: the meter stays in the free gap next to the notification area and takes the richest layout that fits there (rows with countdown, rows without countdown, short token, rings) instead of jumping to a wider gap elsewhere. New medium layout (185 DIP) keeps the 5h/주 rows and highlight without the countdown.
+- Dual: the tray number turns red while a service cannot be used; the tray tooltip names it and when it resumes.
+- Dual: low-usage notices wait while Windows does not accept notifications (Do Not Disturb, including the automatic rule for full-screen windows, presentations, the lock screen) and appear once it does; a newer notice for the same service replaces a held one, and notices older than six hours are dropped. Tray balloons are not kept in the notification center, so they used to be lost in those states.
 - Classic and Expanded are unchanged.
 
 ## 2.3.1 — 2026-11-27

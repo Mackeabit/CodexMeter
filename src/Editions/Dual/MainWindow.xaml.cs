@@ -62,7 +62,7 @@ public partial class MainWindow : Window
             PlaceInitial(); KeepVisible();
             if (!testing) { claudeStore.Refresh(); claude = claudeStore.Current; CreateTray(); CheckClaudeAlert(); if (prefs.Taskbar) { SetTaskbar(true, false); Hide(); } clock.Start(); await RefreshAsync(); }
         };
-        clock.Tick += async (_, _) => { if (!testing && claudeStore.Refresh()) { claude = claudeStore.Current; CheckClaudeAlert(); } RenderState(); UpdateTray(); UpdateTaskbar(); if (!busy && DateTimeOffset.Now >= nextPoll) await RefreshAsync(); if (!testing) await PollClaudeAsync(); };
+        clock.Tick += async (_, _) => { if (!testing && claudeStore.Refresh()) { claude = claudeStore.Current; CheckClaudeAlert(); } if (!testing) FlushNotices(); RenderState(); UpdateTray(); UpdateTaskbar(); if (!busy && DateTimeOffset.Now >= nextPoll) await RefreshAsync(); if (!testing) await PollClaudeAsync(); };
         KeyDown += (_, e) => { if (e.Key == Key.Escape) Hide(); if (e.Key == Key.F5) _ = RefreshAsync(); };
         MouseRightButtonUp += (_, _) => ShowSettings();
         Closing += (_, e) => { if (!exiting) { e.Cancel = true; Hide(); } };
@@ -110,6 +110,8 @@ public partial class MainWindow : Window
         try { Directory.CreateDirectory(Path.GetDirectoryName(settingsFile)!); var temp = settingsFile + ".tmp"; File.WriteAllText(temp, JsonSerializer.Serialize(prefs)); File.Move(temp, settingsFile, true); } catch { }
     }
     [DllImport("user32.dll")] private static extern bool DestroyIcon(IntPtr handle);
+    // Only fresh values may claim "unusable"; an old reading is already shown as "!" or (이전 값).
+    internal static bool TrayBlocked(RingService[] services) => services.Any(x => x.Blocked && !x.Stale);
     private void UpdateTray()
     {
         if (tray == null) return;
@@ -121,19 +123,21 @@ public partial class MainWindow : Window
         var any = services.Where(x => !x.Warning && x.Shown != null).Select(x => x.Shown!).OrderBy(x => x.Remaining).FirstOrDefault();
         var main = fresh ?? any;
         string text = main == null ? (stale ? "!" : "—") : fresh == null ? "!" : Math.Floor(main.Remaining).ToString();
+        // A service that cannot be used right now turns the tray number red; the tooltip names which one and until when.
+        bool blocked = TrayBlocked(services);
         bool light = TrayArtwork.IsLightTaskbar();
         int iconSize = Math.Clamp(Forms.SystemInformation.SmallIconSize.Width, 16, 64);
-        var state = $"{text}:{stale}:{main?.Bucket}:{main?.Duration}:{snapshot?.Allowed}:{light}:{iconSize}:{main?.Remaining}:{claude?.Updated}";
+        var state = $"{text}:{stale}:{blocked}:{main?.Bucket}:{main?.Duration}:{snapshot?.Allowed}:{light}:{iconSize}:{main?.Remaining}:{claude?.Updated}";
         if (state == trayState) return;
         trayState = state;
-        using var bitmap = TrayArtwork.Render(text, iconSize, light);
+        using var bitmap = TrayArtwork.Render(text, iconSize, light, blocked ? RingArtwork.Low : null);
         var h = bitmap.GetHicon();
         using var borrowed = Drawing.Icon.FromHandle(h);
         var icon = (Drawing.Icon)borrowed.Clone();
         DestroyIcon(h);
         tray.Icon = icon;
         currentIcon?.Dispose(); currentIcon = icon;
-        string Part(RingService x) => x.Blocked ? $"{x.Short} 사용 불가" : x.Shown is Quota q ? $"{x.Short} {RingArtwork.WindowName(q)} {q.Remaining:0}%" + (x.Stale ? "(이전 값)" : "") : $"{x.Short} 미확인";
+        string Part(RingService x) => x.Blocking is Quota b ? $"{x.Short} 사용 불가 ({RingArtwork.ShortCountdown(b, now)} 후)" : x.Shown is Quota q ? $"{x.Short} {RingArtwork.WindowName(q)} {q.Remaining:0}%" + (x.Stale ? "(이전 값)" : "") : $"{x.Short} 미확인";
         var label = "Codex Meter · " + string.Join(" · ", services.Select(Part));
         tray.Text = label.Length > 127 ? label[..127] : label;
     }
@@ -165,12 +169,25 @@ public partial class MainWindow : Window
     // (an old file at startup, a statusLine report from long ago) never raise a warning.
     private void CheckClaudeAlert() => Notify(claudeAlerts.Observe(ClaudeAlertSnapshot, DateTimeOffset.Now, prefs.Alerts && tray != null, StaleAfter.TotalSeconds));
     private Snapshot? ClaudeAlertSnapshot => claude?.AlertSnapshot();
+    // Tray balloons are not kept in the notification center: shown while Windows is in Do Not Disturb (reported as
+    // "busy"), full screen, a presentation or the lock screen, they are simply dropped, and the alert policy has already
+    // recorded the stage. So a notice waits here until Windows accepts notifications again (checked every second).
+    private readonly NoticeQueue notices = new();
+    private DateTimeOffset lastNoticeShown = DateTimeOffset.MinValue;
     private void Notify(UsageNotification? notification)
     {
         if (notification == null || testing) return;
-        // OS notification settings control delivery. Do not retry a delivered policy event.
-        try { tray?.ShowBalloonTip(5000, notification.Title, notification.Text,
-            notification.Critical ? Forms.ToolTipIcon.Warning : Forms.ToolTipIcon.Info); }
+        notices.Add(notification, DateTimeOffset.Now);
+        FlushNotices();
+    }
+    private void FlushNotices()
+    {
+        var now = DateTimeOffset.Now;
+        // Two notices in a row get a few seconds apart so the second does not cover the first.
+        if (tray == null || now - lastNoticeShown < TimeSpan.FromSeconds(6) || !NoticeQueue.WindowsAcceptsNotifications()) return;
+        if (notices.Next(now) is not UsageNotification next) return;
+        lastNoticeShown = now;
+        try { tray.ShowBalloonTip(5000, next.Title, next.Text, next.Critical ? Forms.ToolTipIcon.Warning : Forms.ToolTipIcon.Info); }
         catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception) { }
     }
     private void ToggleAlerts()

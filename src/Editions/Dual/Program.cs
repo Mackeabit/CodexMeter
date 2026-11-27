@@ -25,6 +25,7 @@ public static class Program
         if (args.Contains("--install")) return Installation.Run();
         if (args.Contains("--verify-alerts")) return AlertVerification.Run(args);
         if (args.Contains("--verify-alert-probe")) return AlertVerification.Probe(args);
+        if (args.Contains("--verify-notification-display")) return NotificationProbe.Run(args);
         if (args.Contains("--verify-portability")) return PortabilityVerification.Run(args);
         if (args.Contains("--verify-taskbar-layout")) return TaskbarLayoutVerification.Run(args);
         if (args.Contains("--diagnose"))
