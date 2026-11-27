@@ -51,6 +51,8 @@ public static class Installation
     public const string Version = "2.2.4";
 #if EXPANDED
     public const string Edition = "Expanded";
+#elif DUAL
+    public const string Edition = "Dual";
 #else
     public const string Edition = "Classic";
 #endif

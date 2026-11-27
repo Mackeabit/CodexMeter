@@ -24,6 +24,7 @@
     <RepositoryUrl>https://github.com/Mackeabit/CodexMeter</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <DefineConstants Condition="'$(MeterEdition)' == 'Expanded'">$(DefineConstants);EXPANDED</DefineConstants>
+    <DefineConstants Condition="'$(MeterEdition)' == 'Dual'">$(DefineConstants);DUAL</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Common/*.cs" />
@@ -31,6 +32,6 @@
     <Page Include="Common/MainWindow.xaml" />
   </ItemGroup>
   <Target Name="ValidateEdition" BeforeTargets="PrepareForBuild">
-    <Error Condition="'$(MeterEdition)' != 'Classic' And '$(MeterEdition)' != 'Expanded'" Text="MeterEdition must be Classic or Expanded." />
+    <Error Condition="'$(MeterEdition)' != 'Classic' And '$(MeterEdition)' != 'Expanded' And '$(MeterEdition)' != 'Dual'" Text="MeterEdition must be Classic, Expanded or Dual." />
   </Target>
 </Project>

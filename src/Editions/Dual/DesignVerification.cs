@@ -1,0 +1,115 @@
+using System;
+using System.IO;
+using System.Linq;
+
+namespace CodexMeter;
+
+internal static class DesignVerification
+{
+    internal static void Run(string folder, Action<bool, string> check)
+    {
+        var now = DateTimeOffset.Now;
+        var week = new Quota("codex", "Codex", 63, 10080, now.AddDays(1));
+        var first = new Quota("codex", "Codex", 37, 300, now.AddHours(2));
+        var codex = new Snapshot(new[] { first, week }, "plus", null, true, null, now);
+        var claude = new ClaudeReading(new[] { new Quota("claude", "Claude", 12, 300, now.AddMinutes(102)), new Quota("claude", "Claude", 54, 10080, now.AddDays(3)) }, now, "fixture");
+        foreach (float scale in new[] { 1f, 1.25f, 1.5f, 2f })
+        {
+            string suffix = ((int)(scale * 100)).ToString();
+            TaskbarHost.SavePreview(Path.Combine(folder, "rings-" + suffix + ".png"), codex, claude, false, scale, light: false, now: now);
+        }
+        TaskbarHost.SavePreview(Path.Combine(folder, "rings-light.png"), codex, claude, false, 1.5f, light: true, now: now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "rings-narrow.png"), codex, claude, false, 1.5f, RingArtwork.MinimumWidth, false, now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "rings-no-claude.png"), codex, null, false, 1.5f, light: false, now: now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "rings-claude-stale.png"), codex, claude with { Updated = now.AddHours(-2) }, false, 1.5f, light: false, now: now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "rings-unknown.png"), null, null, false, 1.5f, light: false, now: now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "rings-denied.png"), codex with { Allowed = false }, claude, false, 1.5f, light: false, now: now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "rings-full-empty.png"), codex with { Windows = new[] { first with { Used = 0 }, week with { Used = 100 } } }, claude, false, 1.5f, light: false, now: now);
+
+        TaskbarHost.SavePreview(Path.Combine(folder, "rings-hover.png"), codex, claude, false, 1.5f, light: false, now: now, pointer: true);
+        TaskbarHost.SavePreview(Path.Combine(folder, "rings-light-hover.png"), codex, claude, false, 1.5f, light: true, now: now, pointer: true);
+        var services = TaskbarHost.Services(codex, false, claude, now);
+        using (var plain = RingArtwork.Render(RingArtwork.PreferredWidth, 44, 1, services, false, now))
+        using (var hovered = RingArtwork.Render(RingArtwork.PreferredWidth, 44, 1, services, false, now, hover: true))
+        {
+            var corner = plain.GetPixel(RingArtwork.PreferredWidth - 2, 22);
+            check(corner.A <= 1, "background stays transparent so the real taskbar material shows through");
+            check(corner.A >= 1, "background keeps a hit-testable alpha for hover and clicks");
+            check(hovered.GetPixel(RingArtwork.PreferredWidth - 3, 22).A > corner.A, "pointer hover adds a visible wash");
+        }
+        check(RingArtwork.Font(RingArtwork.NumberFont, 12).Name is RingArtwork.NumberFont or "Segoe UI", "ring numbers use Segoe UI Variable when installed, else Segoe UI");
+        check(services[0].Center == "37" && services[1].Center == "46", "ring centers show the lower remaining value per service");
+        check(services[0].Lowest?.Minutes == 10080 && services[1].Lowest?.Minutes == 10080 && RingArtwork.WindowName(services[0].Lowest!) == "주", "each reset token names the lowest window of its own service");
+        var low = TaskbarHost.Services(codex with { Windows = new[] { first with { Used = 92 }, week } }, false, claude, now);
+        using (var image = RingArtwork.Render(RingArtwork.PreferredWidth, 44, 1, low, false, now))
+        {
+            int red = Enumerable.Range(0, 46).Sum(x => Enumerable.Range(0, 44).Count(y => image.GetPixel(x, y).ToArgb() == RingArtwork.Low.ToArgb()));
+            check(red > 20, "a window under 20% turns its ring red");
+        }
+        using (var image = RingArtwork.Render(RingArtwork.PreferredWidth, 44, 1, services, false, now))
+        {
+            int purple = Enumerable.Range(46, 46).Sum(x => Enumerable.Range(0, 44).Count(y => image.GetPixel(x, y).ToArgb() == RingService.ClaudeAccent.ToArgb()));
+            int coral = Enumerable.Range(0, 46).Sum(x => Enumerable.Range(0, 44).Count(y => image.GetPixel(x, y).ToArgb() == RingService.CodexAccent.ToArgb()));
+            check(purple > 20 && coral > 20, "Codex and Claude rings use their own colors");
+        }
+        var unknown = TaskbarHost.Services(null, false, null, now);
+        check(unknown.All(x => x.Center == "—"), "missing data renders a dash, never zero or full");
+        var expired = claude with { Windows = new[] { new Quota("claude", "Claude", 70, 300, now.AddMinutes(-5)) } };
+        check(TaskbarHost.Services(codex, false, expired, now)[1].FiveHour == null, "a Claude window past its reset is treated as unknown, not refilled");
+        check(TaskbarHost.Services(codex, false, claude with { Updated = now.AddHours(-1) }, now)[1].Stale, "an old Claude report is marked stale");
+        check(RingArtwork.ShortCountdown(first, now) is "2:00" or "1:59" && RingArtwork.ShortCountdown(week, now) == "1일" && RingArtwork.ShortCountdown(week with { Reset = now.AddMinutes(41.5) }, now) == "42분" && RingArtwork.ShortCountdown(week with { Reset = null }, now) == "—" && RingArtwork.ShortCountdown(week with { Reset = now.AddMinutes(-1) }, now) == "확인", "short countdown covers days, hours, minutes, missing and passed resets");
+        // The reported clipping: every token must fit its reserved width at every scale.
+        using (var probe = new System.Drawing.Bitmap(10, 10))
+        using (var g = System.Drawing.Graphics.FromImage(probe))
+        using (var top = new System.Drawing.Font("Malgun Gothic", 11, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Pixel))
+        using (var bottom = new System.Drawing.Font("Malgun Gothic", 12, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Pixel))
+        {
+            var fmt = System.Drawing.StringFormat.GenericTypographic;
+            float widest = new[] { "6일", "23:59", "59분", "확인", "—" }.Max(t => g.MeasureString(t, bottom, System.Drawing.PointF.Empty, fmt).Width);
+            widest = Math.Max(widest, new[] { "5h", "주" }.Max(t => g.MeasureString(t, top, System.Drawing.PointF.Empty, fmt).Width));
+            check(widest <= RingArtwork.TokenWidth, $"longest reset token ({widest:0.#} DIP) fits beside its ring ({RingArtwork.TokenWidth} DIP)");
+        }
+        var area = new System.Drawing.Rectangle(0, 0, 2560, 72);
+        var obstacles = new[] { new System.Drawing.Rectangle(0, 0, 237, 72), new System.Drawing.Rectangle(500, 0, 2060, 72) };
+        var placement = TaskbarHost.FindMeterSpace(area, obstacles, 2140, 1.5f, 66);
+        check(placement.HasValue && obstacles.All(r => !r.IntersectsWith(placement.Value)), "rings fit a narrow taskbar gap without covering buttons");
+        check(TaskbarHost.FindMeterSpace(area, new[] { new System.Drawing.Rectangle(0, 0, 237, 72), new System.Drawing.Rectangle(330, 0, 2230, 72) }, 2140, 1.5f, 66) == null, "rings hide instead of overlapping when even two rings cannot fit");
+    }
+}
+
+internal static class ClaudeVerification
+{
+    internal static void Run(string folder, Action<bool, string> check)
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1800000000);
+        var full = ClaudeUsage.ParseStatusLine("""{"session_id":"x","model":{"id":"m"},"rate_limits":{"five_hour":{"used_percentage":12.5,"resets_at":1800003600},"seven_day":{"used_percentage":54,"resets_at":1800300000}}}""", now);
+        check(full != null && full.FiveHour?.Remaining == 87.5 && full.Weekly?.Remaining == 46 && full.FiveHour.Reset == DateTimeOffset.FromUnixTimeSeconds(1800003600), "statusLine rate_limits parsed into 5-hour and weekly windows");
+        check(ClaudeUsage.ParseStatusLine("""{"session_id":"x"}""", now) == null, "missing rate_limits leaves the stored value untouched");
+        var partial = ClaudeUsage.ParseStatusLine("""{"rate_limits":{"seven_day":{"used_percentage":130,"resets_at":"2027-01-01T00:00:00Z"}}}""", now);
+        check(partial != null && partial.FiveHour == null && partial.Weekly?.Remaining == 0 && partial.Weekly.Reset?.Year == 2027, "absent windows stay absent; out-of-range values clamp; ISO reset accepted");
+        var round = ClaudeUsage.Deserialize(ClaudeUsage.Serialize(full!));
+        check(round != null && round.Updated == now && round.FiveHour?.Used == 12.5 && round.Weekly?.Reset == full!.Weekly!.Reset, "stored file round-trips");
+        check(!ClaudeUsage.Serialize(full!).Contains("session", StringComparison.OrdinalIgnoreCase), "stored file keeps no session data");
+        string path = Path.Combine(folder, "claude-usage-test.json");
+        var output = new StringWriter();
+        ClaudeUsage.RunStatusLine(new StringReader("""{"rate_limits":{"five_hour":{"used_percentage":40,"resets_at":1800003600}}}"""), output, path);
+        var store = new ClaudeUsageStore(path);
+        check(store.Refresh() && store.Current?.FiveHour?.Remaining == 60 && output.ToString().Contains("5h 60%"), "statusLine hook writes the file the meter reads and prints a short status");
+        output = new StringWriter();
+        ClaudeUsage.RunStatusLine(new StringReader("not json"), output, path);
+        check(output.ToString().Length > 0 && ClaudeUsage.Deserialize(File.ReadAllText(path))?.FiveHour?.Remaining == 60, "malformed input never breaks Claude Code or erases the last value");
+        // Shape observed from Claude Code 2.1.332 stream-json (utilization is a 0..1 fraction).
+        var stream = new[]
+        {
+            """{"type":"system","subtype":"init"}""",
+            "not json",
+            """{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1800003600,"rateLimitType":"five_hour","unifiedWindows":{"five_hour":{"utilization":0.08,"resetsAt":1800003600,"status":"allowed"},"seven_day":{"utilization":0.14,"resetsAt":1800300000,"status":"allowed"}}}}""",
+            """{"type":"result","subtype":"success"}""",
+        };
+        var polled = ClaudePoller.ParseStream(stream, now);
+        check(polled != null && polled.FiveHour?.Remaining == 92 && polled.Weekly?.Remaining == 86 && polled.Weekly.Reset == DateTimeOffset.FromUnixTimeSeconds(1800300000) && polled.Source == "poll", "CLI rate_limit_event fractions become remaining percentages for both windows");
+        var single = ClaudePoller.ParseStream(new[] { """{"type":"rate_limit_event","rate_limit_info":{"rateLimitType":"seven_day","utilization":0.5,"resetsAt":1800300000}}""" }, now);
+        check(single != null && single.FiveHour == null && single.Weekly?.Remaining == 50, "older event shape without unifiedWindows still yields its one window");
+        check(ClaudePoller.ParseStream(new[] { """{"type":"result"}""" }, now) == null, "no rate_limit_event means no reading, not zero usage");
+    }
+}
