@@ -1,6 +1,6 @@
-; Build with scripts/build.ps1. Both editions intentionally share an AppId.
+; Build with scripts/build.ps1. All editions intentionally share an AppId.
 #ifndef AppVersion
-  #define AppVersion "2.2.4"
+  #define AppVersion "2.3.0"
 #endif
 #ifndef Edition
   #define Edition "Classic"

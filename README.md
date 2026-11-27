@@ -1,10 +1,10 @@
 # CodexMeter
 
-Windows 작업표시줄에서 Codex 잔여 사용량과 리셋 시간을 확인하는 작은 무료 앱입니다. 주황색 분할 막대와 숫자 트레이 아이콘을 제공합니다.
+Windows 작업표시줄에서 Codex 잔여 사용량과 리셋 시간을 확인하는 작은 무료 앱입니다. 주황색 분할 막대와 숫자 트레이 아이콘을 제공합니다. **Dual** 디자인은 Claude 사용량도 함께 표시합니다.
 
 **[다운로드 · Releases](https://github.com/Mackeabit/CodexMeter/releases/latest)** · [English](README.en.md) · [개인정보 처리](PRIVACY.md) · [MIT License](LICENSE)
 
-OpenAI와 무관한 커뮤니티 프로젝트입니다. Codex가 반환하는 계정 한도를 표시하며, 일반 ChatGPT 대화의 모든 모델별 사용량을 통합하는 앱은 아닙니다.
+OpenAI·Anthropic과 무관한 커뮤니티 프로젝트입니다. Codex가 반환하는 계정 한도를 표시하며, 일반 ChatGPT 대화의 모든 모델별 사용량을 통합하는 앱은 아닙니다.
 
 ## 디자인 선택
 
@@ -12,18 +12,21 @@ OpenAI와 무관한 커뮤니티 프로젝트입니다. Codex가 반환하는 �
 | --- | --- | --- |
 | **Classic** | 기존의 작은 막대·숫자를 유지하고 오른쪽에 리셋 날짜와 시간을 표시 | 2.0.3 계열 |
 | **Expanded** | 한도가 하나면 크게, 두 개면 세로로 정렬. 리셋 날짜와 시간을 함께 표시 | 2.1.2 계열 |
+| **Dual** | Codex와 Claude를 이중 링 두 개로 표시. 바깥 링은 5시간, 안쪽 링은 주간 한도이고 가운데 숫자는 더 적게 남은 값. 링 옆에 그 한도(`5h`/`주`)와 리셋까지 남은 시간 | 2.3.0 신규 |
 
 ![Classic: 두 개 한도 표시 예시](docs/images/classic.png)
 
 ![Expanded: 두 개 한도 표시 예시](docs/images/expanded.png)
 
-이미지는 실제 계정 정보가 아닌 테스트 데이터입니다. 두 디자인의 기능은 동일하며 설정·알림 기록을 공유합니다. 동시에 실행되지 않으므로 하나를 선택하세요.
+![Dual: Codex와 Claude 이중 링 표시 예시](docs/images/dual.png)
+
+이미지는 실제 계정 정보가 아닌 테스트 데이터입니다. 세 디자인은 설정·알림 기록을 공유하며 동시에 실행되지 않으므로 하나를 선택하세요. Dual은 Codex 기능에 Claude 표시를 더한 디자인입니다.
 
 ## 설치와 실행
 
 지원 대상은 Windows 11 x64이며, Windows 10 22H2 x64는 별도 검증하지 않았습니다. ARM64 네이티브 빌드는 제공하지 않습니다. 이 PC에서 로그인한 Codex와 호환되는 `codex.exe`가 필요합니다. **.NET 실행환경은 포함되어 있어 별도 설치할 필요가 없습니다.**
 
-1. Releases에서 원하는 디자인의 `CodexMeter-2.2.4-Classic-Setup-x64.exe` 또는 `CodexMeter-2.2.4-Expanded-Setup-x64.exe`를 받습니다.
+1. Releases에서 원하는 디자인의 `CodexMeter-2.3.0-Classic-Setup-x64.exe`, `CodexMeter-2.3.0-Expanded-Setup-x64.exe` 또는 `CodexMeter-2.3.0-Dual-Setup-x64.exe`를 받습니다.
 2. 설치 마법사를 실행합니다. 관리자 권한 없이 현재 사용자에게 설치되며, 자동 실행 여부를 선택할 수 있습니다.
 3. 시작 메뉴에서 Codex Meter를 실행합니다. Codex를 찾지 못하면 트레이 메뉴의 **연결 및 자동 실행**에서 자동 탐색하거나 CLI용 `codex.exe`를 선택하세요.
 
@@ -32,7 +35,7 @@ OpenAI와 무관한 커뮤니티 프로젝트입니다. Codex가 반환하는 �
 현재 배포 EXE는 **코드 서명이 없습니다**. Windows SmartScreen의 알 수 없는 게시자 경고가 나타날 수 있습니다. 이 저장소의 Releases에서 받았는지 확인하고, 배포된 `SHA256SUMS.txt`와 해시를 비교할 수 있습니다. 해시는 코드 서명을 대신하지 않습니다.
 
 ```powershell
-Get-FileHash .\CodexMeter-2.2.4-Classic-Setup-x64.exe -Algorithm SHA256
+Get-FileHash .\CodexMeter-2.3.0-Classic-Setup-x64.exe -Algorithm SHA256
 ```
 
 ## 사용법
@@ -46,11 +49,23 @@ Get-FileHash .\CodexMeter-2.2.4-Classic-Setup-x64.exe -Algorithm SHA256
 - 조회 실패 시 이전 수치를 최신인 것처럼 표시하지 않고 갱신 실패를 알립니다. 서버가 새 사용량을 반환하기 전에는 리셋을 임의로 100%로 바꾸지 않습니다.
 - 작업표시줄에 충분한 공간이 없으면 막대를 숨깁니다. 트레이 아이콘과 상세 화면은 계속 사용할 수 있습니다. Windows 업데이트나 작업표시줄 교체 프로그램에 따라 막대 배치가 동작하지 않을 수 있습니다.
 
+## Dual: Claude 사용량 연결
+
+Dual은 이 PC의 Claude Code CLI로 Claude 사용량을 읽습니다. Claude Pro 또는 Max 구독이 필요합니다.
+
+1. Claude Code CLI를 설치합니다: `irm https://claude.ai/install.ps1 | iex`
+2. 새 터미널에서 `claude auth login`으로 로그인합니다. Claude 데스크톱 앱의 로그인과는 별개입니다.
+
+- Dual은 15분마다 아주 짧은 요청(Haiku, 도구·MCP·설정 없음, 세션 저장 안 함)을 보내고, 응답에 함께 오는 5시간·주간 한도 정보를 읽습니다. **이 요청도 Claude 사용량에 조금 포함됩니다**(1회 약 1천 토큰). 마지막 값이 10분 이내면 요청하지 않고, 리셋 시각이 지나면 한 번 다시 확인합니다. 작업표시줄 메뉴의 **새로고침**은 바로 다시 확인합니다.
+- 30분이 지난 값은 회색으로 표시합니다. 리셋 시각이 지난 한도는 다시 확인할 때까지 `—`로 표시하며, 리셋되었다고 추측하지 않습니다.
+- Claude Code의 statusLine 명령으로 `CodexMeter.exe --claude-statusline`을 등록하면, 터미널에서 Claude Code를 쓸 때마다 요청 없이 값이 갱신됩니다(선택 사항).
+- Claude 잔여량 알림은 아직 제공하지 않습니다. Codex 알림은 기존과 같습니다.
+
 ## 업데이트·이전 버전에서 이동
 
 새 Setup EXE를 실행하면 실행 중인 CodexMeter에 정상 종료를 요청한 뒤 새 파일과 시작 메뉴 바로가기를 설치합니다. 종료되지 않으면 덮어쓰지 않고 종료 후 재시도를 안내합니다. 설정과 중복 알림 방지 기록은 유지합니다.
 
-Classic과 Expanded는 같은 설치 위치를 사용합니다. 다른 디자인의 Setup을 실행하면 디자인이 교체됩니다. 자동 실행은 설치 화면에서 선택하며, 기존 자동 실행 바로가기가 있으면 선택 상태로 시작합니다. Windows 작업 관리자에서 따로 비활성화한 상태는 강제로 해제하지 않습니다.
+Classic, Expanded, Dual은 같은 설치 위치를 사용합니다. 다른 디자인의 Setup을 실행하면 디자인이 교체됩니다. 자동 실행은 설치 화면에서 선택하며, 기존 자동 실행 바로가기가 있으면 선택 상태로 시작합니다. Windows 작업 관리자에서 따로 비활성화한 상태는 강제로 해제하지 않습니다.
 
 이전 `Install.cmd` 방식으로 생성된 `versions` 폴더와 사용자가 보관한 배포 ZIP은 자동 삭제하지 않습니다. 새 버전 정상 실행을 확인한 뒤 필요 없는 옛 배포 폴더를 직접 정리할 수 있습니다. `--install`은 기존 스크립트 호환용이며 새 설치에는 **Setup EXE를 사용하세요**.
 

@@ -1,6 +1,6 @@
 # CodexMeter
 
-A free Windows taskbar and tray monitor for Codex quota remaining and reset times. MIT licensed, with **Classic** and **Expanded** layouts. The application UI is currently Korean; the installer supports English and Korean when the compiler's Korean translation is available.
+A free Windows taskbar and tray monitor for Codex quota remaining and reset times. MIT licensed, with **Classic**, **Expanded** and **Dual** layouts. Dual also shows Claude usage. The application UI is currently Korean; the installer supports English and Korean when the compiler's Korean translation is available.
 
 The tray uses a single numeric icon design. Warning and unknown states still display `!` and `—`.
 
@@ -12,24 +12,29 @@ Display-setting changes preserve the floating window's position. A window outsid
 
 **[Download](https://github.com/Mackeabit/CodexMeter/releases/latest)** · [한국어](README.md) · [Privacy](PRIVACY.md) · [License](LICENSE)
 
-This is an independent community project, not an OpenAI product. It displays limits reported by the locally installed Codex CLI/app-server, not all ChatGPT model limits.
+This is an independent community project, not an OpenAI or Anthropic product. It displays limits reported by the locally installed Codex CLI/app-server, not all ChatGPT model limits.
 
 | Edition | Layout |
 | --- | --- |
 | Classic | Compact bars and text with a reset date/time suffix |
 | Expanded | A larger single limit, or two vertically stacked limits with reset times |
+| Dual | Two concentric-ring gauges for Codex and Claude: outer ring = 5-hour limit, inner ring = weekly limit, center = lower remaining value, with the lowest limit and time to its reset beside each ring |
 
 ![Classic](docs/images/classic.png)
 
 ![Expanded](docs/images/expanded.png)
 
+![Dual](docs/images/dual.png)
+
 Download the edition's **Setup-x64.exe** for per-user installation, Start menu integration, optional Windows startup, and an uninstaller. Or extract **Portable-x64.zip** completely and run `CodexMeter.exe`. Both include .NET; Codex itself and its login are required separately. Windows 11 x64 is the validation target. Windows 10 22H2 and ARM64 emulation have not been tested.
 
-Both editions share settings and notification history in `%LOCALAPPDATA%\CodexMeter`; only one instance runs at a time. Portable refers to program placement: preferences remain in the Windows user profile. A new setup replaces the installed edition while keeping preferences. Old pre-2.2 version folders are not automatically removed. There is no automatic updater.
+All editions share settings and notification history in `%LOCALAPPDATA%\CodexMeter`; only one instance runs at a time. Portable refers to program placement: preferences remain in the Windows user profile. A new setup replaces the installed edition while keeping preferences. Old pre-2.2 version folders are not automatically removed. There is no automatic updater.
 
 The binaries are **unsigned**, so Windows SmartScreen may warn. Use this repository's Releases and compare downloads with `SHA256SUMS.txt`; checksums are not a substitute for code signing.
 
 Below-20% and below-5% notifications are deduplicated per quota/reset cycle, including across restarts. The number of displayed quotas follows server data rather than a plan-name assumption. Reset times use the PC's local time zone. If no safe taskbar space is available, the taskbar meter hides and the tray remains usable.
+
+**Dual and Claude.** Dual reads Claude limits through the locally installed Claude Code CLI (Claude Pro or Max). Install it with `irm https://claude.ai/install.ps1 | iex`, then run `claude auth login`; this login is separate from the Claude desktop app. Every 15 minutes Dual sends one minimal request (Haiku, no tools, MCP or settings, no saved session) and reads the 5-hour and weekly limits that come back with it. **These requests count toward your Claude usage** (about 1k tokens each). A poll is skipped when the last value is under 10 minutes old and repeated once after a reset passes. Values older than 30 minutes are dimmed; a limit past its reset shows `—` until confirmed. Optionally register `CodexMeter.exe --claude-statusline` as a Claude Code statusLine command to update the value without requests while you use the CLI. Claude low-usage notifications are not available yet.
 
 Build on Windows using .NET SDK 10.0.403 and Inno Setup 6:
 
