@@ -6,7 +6,7 @@ namespace CodexMeter;
 
 internal static class DesignVerification
 {
-    // Wide taskbar layout: two rows (5h, 주) beside each ring, the shown row tinted.
+    // Full taskbar layout: two rows (5시간, 주간) with the time left beside each ring, the shown row tinted.
     private static void WideChecks(string folder, DateTimeOffset now, Quota week, Quota first, Snapshot codex, ClaudeReading claude, Action<bool, string> check)
     {
         var real = codex with { Windows = new[] { week with { Used = 10 } } };   // shape observed live: Codex weekly only
@@ -26,18 +26,26 @@ internal static class DesignVerification
         {
             int x = RingArtwork.Pad + RingArtwork.RingCell + RingArtwork.RowGap + 6;
             int fiveTop = 22 - RingArtwork.RowHeight - 1 + 2, weekTop = 22 + 1 + 2;
-            check(image.GetPixel(x, fiveTop).A > 30 && image.GetPixel(x, weekTop).A <= 2, "wide layout tints the 5-hour row, which the center number shows");
+            check(image.GetPixel(x, fiveTop).A > 30 && image.GetPixel(x, weekTop).A <= 2, "full layout tints the 5시간 row, which the center number shows");
         }
         var weeklyShown = TaskbarHost.Services(real, false, claude, now);
         using (var image = RingArtwork.Render(RingArtwork.WideWidth, 44, 1, weeklyShown, false, now))
         {
             int x = RingArtwork.Pad + RingArtwork.RingCell + RingArtwork.RowGap + 6;
             check(image.GetPixel(x, 22 + 1 + 2).A > 30 && image.GetPixel(x, 22 - RingArtwork.RowHeight - 1 + 2).A <= 2,
-                "with only a weekly value, the 주 row is the tinted one");
+                "with only a weekly value, the 주간 row is the tinted one");
         }
-        check(RingArtwork.RowText(weeklyShown[0], null, true, now) == ("5h", "없음", "") && RingArtwork.RowText(weeklyShown[0], weeklyShown[0].Weekly, false, now).Value == "90%",
-            "wide rows say 없음 for an account without a 5-hour window and list the weekly value");
+        check(RingArtwork.RowText(weeklyShown[0], null, true, now) == ("5시간", "없음", "주간 한도만") && RingArtwork.RowText(weeklyShown[0], weeklyShown[0].Weekly, false, now) is ("주간", "90%", "1일 0시간"),
+            $"full rows spell out 5시간/주간 and give the time left ({RingArtwork.RowText(weeklyShown[0], weeklyShown[0].Weekly, false, now)})");
         check(RingArtwork.RowText(services[1], null, true, now).Value == "—", "an unknown row shows a dash");
+        var gone = TaskbarHost.Services(codex with { Windows = new[] { first with { Used = 100 }, week } }, false, claude, now)[0];
+        check(RingArtwork.RowText(gone, gone.FiveHour, true, now).Time == "2시간 0분 후" || RingArtwork.RowText(gone, gone.FiveHour, true, now).Time == "1시간 59분 후",
+            $"an exhausted row says how long until it can be used again ({RingArtwork.RowText(gone, gone.FiveHour, true, now).Time})");
+        check(RingArtwork.LongCountdown(week with { Reset = now.AddDays(6).AddHours(13).AddMinutes(1) }, now) == "6일 13시간" &&
+            RingArtwork.LongCountdown(week with { Reset = now.AddHours(4).AddMinutes(17).AddSeconds(5) }, now) == "4시간 17분" &&
+            RingArtwork.LongCountdown(week with { Reset = now.AddMinutes(41.5) }, now) == "42분" &&
+            RingArtwork.LongCountdown(week with { Reset = now.AddMinutes(-1) }, now) == "확인 중" && RingArtwork.LongCountdown(week with { Reset = null }, now) == "—",
+            "the time left reads in words: days and hours, hours and minutes, minutes");
 
         using (var probe = new System.Drawing.Bitmap(10, 10))
         using (var g = System.Drawing.Graphics.FromImage(probe))
@@ -46,42 +54,25 @@ internal static class DesignVerification
         {
             var fmt = System.Drawing.StringFormat.GenericTypographic;
             float W(string t, System.Drawing.Font f) => g.MeasureString(t, f, System.Drawing.PointF.Empty, fmt).Width;
-            float labelMax = new[] { "5h", "주" }.Max(t => W(t, label));
+            float labelMax = new[] { "5시간", "주간" }.Max(t => W(t, label));
             float valueMax = Math.Max(W("100%", value), W("없음", label));
-            float timeMax = new[] { "6일", "23:59", "59분", "확인", "—" }.Max(t => W(t, label));
+            float timeMax = new[] { "6일 23시간", "23시간 59분", "4시간 59분 후", "6일 23시간 후", "59분", "확인 중", "주간 한도만", "—" }.Max(t => W(t, label));
             check(labelMax <= RingArtwork.RowLabelWidth && valueMax <= RingArtwork.RowValueRight - RingArtwork.RowLabelX - RingArtwork.RowLabelWidth && timeMax <= RingArtwork.RowTimeWidth,
-                $"wide row text fits its columns (label {labelMax:0.#}/{RingArtwork.RowLabelWidth}, value {valueMax:0.#}, time {timeMax:0.#}/{RingArtwork.RowTimeWidth:0.#} DIP)");
-            using var smallValue = RingArtwork.Font(RingArtwork.NumberFont, 10.5f);
-            float mediumValueRoom = RingArtwork.MediumRowWidth - 1 - RingArtwork.MediumLabelX - RingArtwork.MediumLabelWidth;
-            float mediumValueMax = new[] { W("99%", value), W("100%", smallValue), W("없음", label) }.Max();
-            check(labelMax <= RingArtwork.MediumLabelWidth && mediumValueMax <= mediumValueRoom,
-                $"medium row text fits its packed columns (label {labelMax:0.#}/{RingArtwork.MediumLabelWidth}, value {mediumValueMax:0.#}/{mediumValueRoom:0.#} DIP)");
+                $"full row text fits its columns (label {labelMax:0.#}/{RingArtwork.RowLabelWidth}, value {valueMax:0.#}/{RingArtwork.RowValueRight - RingArtwork.RowLabelX - RingArtwork.RowLabelWidth}, time {timeMax:0.#}/{RingArtwork.RowTimeWidth:0.#} DIP)");
         }
 
         var open = new System.Drawing.Rectangle(0, 0, 2560, 72);
         var roomy = TaskbarHost.FindMeterSpace(open, new[] { new System.Drawing.Rectangle(0, 0, 300, 72) }, 2140, 1.5f, 66);
-        check(roomy?.Width == (int)Math.Round(RingArtwork.WideWidth * 1.5f), "a roomy taskbar gets the wide layout");
-        var tight = TaskbarHost.FindMeterSpace(open, new[] { new System.Drawing.Rectangle(0, 0, 237, 72), new System.Drawing.Rectangle(560, 0, 2000, 72) }, 2140, 1.5f, 66);
-        check(tight != null && tight.Value.Width < RingArtwork.WideWidth * 1.5f, "a gap too small for the wide layout falls back to the shorter one");
-        // The case seen live: a wide free stretch far left, a smaller gap next to the tray. The meter stays by the tray.
-        // Start button area 0..300, free 300..900 (wide enough for anything), app buttons 900..(tray - gap px).
-        var start = new System.Drawing.Rectangle(0, 0, 300, 72);
-        int Gap(int px) => 2140 - px;   // left edge of a free gap of px pixels ending at the tray edge
-        var byTray = TaskbarHost.FindMeterSpace(open, new[] { start, new System.Drawing.Rectangle(900, 0, Gap(360) - 900, 72) }, 2140, 1.5f, 66);
-        check(byTray?.Right > Gap(360) && byTray.Value.Width == (int)Math.Round(RingArtwork.MediumWidth * 1.5f),
-            $"a gap by the tray too small for the wide layout keeps the meter there with rows but no countdown ({byTray})");
-        var smallByTray = TaskbarHost.FindMeterSpace(open, new[] { start, new System.Drawing.Rectangle(900, 0, Gap(250) - 900, 72) }, 2140, 1.5f, 66);
-        check(smallByTray?.Right > Gap(250) && smallByTray.Value.Width < RingArtwork.MediumWidth * 1.5f,
-            $"a smaller gap by the tray keeps the meter there with the short layout instead of jumping left ({smallByTray})");
-        // Measured live (2560x72 taskbar at 150%): last app button ends at 1845, notification area starts at 2143.
+        check(roomy?.Width == (int)Math.Round(RingArtwork.WideWidth * 1.5f) && roomy.Value.Right > 2000, "a roomy taskbar gets the full layout right beside the tray");
+        // Measured live (2560x72 taskbar at 150%): app buttons 715..1845, notification area from 2143. The 280 px gap by
+        // the tray cannot hold the full rows, so the meter takes the free space left of the app buttons instead.
         var observed = new[] { new System.Drawing.Rectangle(715, 0, 1845 - 715, 72), new System.Drawing.Rectangle(2143, 0, 417, 72) };
-        var live = TaskbarHost.FindMeterSpace(new System.Drawing.Rectangle(0, 0, 2560, 72), observed, 2143 - 9, 1.5f, 66);
-        check(live?.Width == (int)Math.Round(RingArtwork.MediumWidth * 1.5f) && live.Value.Left >= 1845,
-            $"the gap measured beside the tray on this PC gets the medium rows ({live})");
-        foreach (float scale in new[] { 1f, 1.5f })
-            TaskbarHost.SavePreview(Path.Combine(folder, $"medium-{(int)(scale * 100)}.png"), real, claudeReal, false, scale, RingArtwork.MediumWidth, false, now);
-        TaskbarHost.SavePreview(Path.Combine(folder, "medium-light.png"), real, claudeReal, false, 1.5f, RingArtwork.MediumWidth, true, now);
-        TaskbarHost.SavePreview(Path.Combine(folder, "medium-five-hour-exhausted.png"), codex with { Windows = new[] { first with { Used = 100 }, week with { Used = 40 } } }, claude, false, 1.5f, RingArtwork.MediumWidth, false, now);
+        var live = TaskbarHost.FindMeterSpace(open, observed, 2143 - 9, 1.5f, 66);
+        check(live?.Width == (int)Math.Round(RingArtwork.WideWidth * 1.5f) && live.Value.Right <= 715,
+            $"on this PC's taskbar the full rows go to the nearest gap that fits them rather than shrinking beside the tray ({live})");
+        var crowded = TaskbarHost.FindMeterSpace(open, new[] { new System.Drawing.Rectangle(0, 0, 1845, 72), new System.Drawing.Rectangle(2143, 0, 417, 72) }, 2134, 1.5f, 66);
+        check(crowded != null && crowded.Value.Left >= 1845 && crowded.Value.Width < RingArtwork.WideWidth * 1.5f,
+            $"only when no gap anywhere fits the full rows does the meter fall back to the short layout beside the tray ({crowded})");
         var shortBar = TaskbarHost.FindMeterSpace(open, new[] { new System.Drawing.Rectangle(0, 0, 300, 72) }, 2140, 1.5f, (int)(32 * 1.5f));
         check(shortBar != null && shortBar.Value.Width < RingArtwork.WideWidth * 1.5f, "a small-icon taskbar keeps the short layout because two rows would not fit its height");
     }
@@ -182,7 +173,7 @@ internal static class DesignVerification
         }
         check(RingArtwork.Font(RingArtwork.NumberFont, 12).Name is RingArtwork.NumberFont or "Segoe UI", "ring numbers use Segoe UI Variable when installed, else Segoe UI");
         check(services[0].Center == "63" && services[1].Center == "88", "ring centers show the 5-hour value first, even when the weekly value is lower");
-        check(services.All(s => s.Shown?.Minutes == 300 && !s.Blocked) && RingArtwork.Token(services[0], services[0].Shown!, now).Top == "5h", "each reset token names the window the center number shows");
+        check(services.All(s => s.Shown?.Minutes == 300 && !s.Blocked) && RingArtwork.Token(services[0], services[0].Shown!, now).Top == "5시간", "each reset token names the window the center number shows");
         StateChecks(folder, now, week, first, codex, claude, check);
         WideChecks(folder, now, week, first, codex, claude, check);
         var low = TaskbarHost.Services(codex with { Windows = new[] { first with { Used = 92 }, week } }, false, claude, now);
@@ -214,7 +205,7 @@ internal static class DesignVerification
         {
             var fmt = System.Drawing.StringFormat.GenericTypographic;
             float widest = new[] { "6일", "23:59", "59분", "확인", "—" }.Max(t => g.MeasureString(t, bottom, System.Drawing.PointF.Empty, fmt).Width);
-            widest = Math.Max(widest, new[] { "5h", "주", RingArtwork.BlockedToken }.Max(t => g.MeasureString(t, top, System.Drawing.PointF.Empty, fmt).Width));
+            widest = Math.Max(widest, new[] { "5시간", "주간", RingArtwork.BlockedToken }.Max(t => g.MeasureString(t, top, System.Drawing.PointF.Empty, fmt).Width));
             check(widest <= RingArtwork.TokenWidth, $"longest reset token ({widest:0.#} DIP) fits beside its ring ({RingArtwork.TokenWidth} DIP)");
         }
         var area = new System.Drawing.Rectangle(0, 0, 2560, 72);

@@ -43,19 +43,13 @@ internal static class RingArtwork
     internal const int RingGap = 4;
     internal const int MinimumWidth = Pad + 2 * RingCell + RingGap + Pad;
     internal const int PreferredWidth = Pad + 2 * (RingCell + TokenGap + TokenWidth) + ServiceGap + Pad;
-    // Wide layout: beside each ring, a 5h row and a 주 row (value and countdown); the row behind the center number
-    // gets a service-colored dot and tint, like the detail window. Used when the taskbar has room for it.
+    // Full layout (the normal one): beside each ring, a 5시간 row and a 주간 row with remaining percent and the time
+    // left until that reset ("6일 13시간", "4시간 17분"); the row behind the center number gets a service-colored dot
+    // and tint, like the detail window. Words are never abbreviated here.
     internal const int RowGap = 5;
-    internal const int RowWidth = 86;
+    internal const int RowWidth = 146;
     internal const int WideServiceGap = 9;
     internal const int WideWidth = Pad + 2 * (RingCell + RowGap + RowWidth) + WideServiceGap + Pad;
-    // Medium layout: the same rows without the countdown (it stays in the hover tooltip), packed tighter.
-    // Sized for the gap observed live beside the tray at 150% (280 px = 186.7 DIP): 185 DIP.
-    internal const int MediumRowWidth = 45;
-    internal const int MediumRowGap = 3;
-    internal const int MediumServiceGap = 5;
-    internal const int MediumWidth = Pad + 2 * (RingCell + MediumRowGap + MediumRowWidth) + MediumServiceGap + Pad;
-    internal const float MediumLabelX = 6, MediumLabelWidth = 12.5f;
     // Two 16 DIP rows need this much height; smaller taskbars keep the short token.
     internal const int WideMinimumHeight = 40;
     internal static readonly Color Low = Color.FromArgb(226, 75, 74);
@@ -73,7 +67,18 @@ internal static class RingArtwork
         return $"{Math.Max(1, (int)Math.Ceiling(span.TotalMinutes))}분";
     }
 
-    internal static string WindowName(Quota q) => q.Minutes == 300 ? "5h" : q.Minutes == 10080 ? "주" : q.Duration;
+    internal static string WindowName(Quota q) => q.Duration;   // 5시간, 주간: never abbreviated
+
+    /// <summary>Time left until a reset in words: 6일 13시간, 4시간 17분, 42분; 확인 중 once it has passed.</summary>
+    internal static string LongCountdown(Quota? q, DateTimeOffset now)
+    {
+        if (q?.Reset is not DateTimeOffset reset) return "—";
+        var span = reset - now;
+        if (span.TotalSeconds <= 0) return "확인 중";
+        if (span.TotalDays >= 1) return $"{(int)span.TotalDays}일 {span.Hours}시간";
+        if (span.TotalHours >= 1) return $"{(int)span.TotalHours}시간 {span.Minutes}분";
+        return $"{Math.Max(1, (int)Math.Ceiling(span.TotalMinutes))}분";
+    }
 
     /// <summary>Accent text needs a darker tone on a light taskbar to keep about 4.5:1 contrast.</summary>
     internal static Color TextAccent(RingService s, bool light) => !light ? s.Accent
@@ -116,20 +121,17 @@ internal static class RingArtwork
         float diameter = Math.Min(RingCell - 4, h - 8);
         float outerStroke = Math.Max(3, diameter * .1f), innerStroke = Math.Max(2.5f, diameter * .085f), ringGap = Math.Max(2f, diameter * .065f);
         float cy = h / 2;
-        // Widest first: rows beside each ring; then the short reset token; a narrow gap keeps only the rings.
-        // One device pixel of slack: a tier width times a fractional scale (275 × 1.5 = 412.5) may be rounded either way.
+        // Full rows beside each ring; only when no space anywhere fits them, the short token; then rings only.
+        // One device pixel of slack: a tier width times a fractional scale may be rounded either way.
         float slack = 1f / scale + .01f;
         bool tall = h + slack >= WideMinimumHeight;
         bool rows = tall && w + slack >= WideWidth;
-        bool mediumRows = !rows && tall && w + slack >= MediumWidth;
-        bool tokens = !rows && !mediumRows && w + slack >= PreferredWidth;
-        int rowWidth = rows ? RowWidth : MediumRowWidth;
+        bool tokens = !rows && w + slack >= PreferredWidth;
         using var center = new StringFormat(StringFormat.GenericTypographic) { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap };
         for (int i = 0; i < services.Length; i++)
         {
             var s = services[i];
             float start = rows ? Pad + i * (RingCell + RowGap + RowWidth + WideServiceGap)
-                : mediumRows ? Pad + i * (RingCell + MediumRowGap + MediumRowWidth + MediumServiceGap)
                 : tokens ? Pad + i * (RingCell + TokenGap + TokenWidth + ServiceGap) : Pad + i * (RingCell + RingGap);
             float cx = start + RingCell / 2f;
             float outerR = (diameter - outerStroke) / 2, innerR = outerR - outerStroke / 2 - ringGap - innerStroke / 2;
@@ -138,7 +140,7 @@ internal static class RingArtwork
             using var font = Font(NumberFont, text.Length >= 3 ? diameter * .27f : diameter * .34f);
             using var brush = new SolidBrush(s.Warning || s.Alert ? Low : s.Stale ? stale : ink);
             g.DrawString(text, font, brush, new RectangleF(cx - outerR, cy - outerR + .5f, outerR * 2, outerR * 2), center);
-            if (rows || mediumRows) DrawRows(g, start + RingCell + (rows ? RowGap : MediumRowGap), cy, s, now, light, ink, stale, rowWidth, withTime: rows);
+            if (rows) DrawRows(g, start + RingCell + RowGap, cy, s, now, light, ink, stale);
             else if (tokens && !s.Warning && s.Shown is Quota shown)
                 DrawToken(g, start + RingCell + TokenGap, cy, shown, s, now, light, ink, stale);
         }
@@ -172,7 +174,8 @@ internal static class RingArtwork
 
     internal const string BlockedToken = "불가";
 
-    // Two short lines beside a ring: which window the center number is (5h or 주) and time until its reset.
+    // Two short lines beside a ring (fallback when the full rows fit nowhere): which window the center number is
+    // (5시간 or 주간) and the time until its reset.
     // A blocked service says 불가 and counts down to when it can be used again.
     internal static (string Top, string Bottom) Token(RingService s, Quota shown, DateTimeOffset now) => s.Blocking is Quota blocking
         ? (BlockedToken, ShortCountdown(blocking, now))
@@ -191,29 +194,27 @@ internal static class RingArtwork
     }
 
     internal const int RowHeight = 16;
-    // Row columns inside RowWidth: [dot][label 5h/주][value right-aligned][countdown].
-    internal const float RowLabelX = 8, RowLabelWidth = 15, RowValueRight = 54, RowTimeX = 58, RowTimeWidth = RowWidth - RowTimeX - 1;
+    // Row columns inside RowWidth: [dot][label 5시간/주간][value right-aligned][time left].
+    internal const float RowLabelX = 8, RowLabelWidth = 30, RowValueRight = 70, RowTimeX = 75, RowTimeWidth = RowWidth - RowTimeX - 1;
 
     internal static (string Label, string Value, string Time) RowText(RingService s, Quota? q, bool fiveHour, DateTimeOffset now)
     {
-        string label = fiveHour ? "5h" : "주";
-        if (fiveHour && s.NoFiveHour && q == null) return (label, "없음", "");
+        string label = fiveHour ? "5시간" : "주간";
+        if (fiveHour && s.NoFiveHour && q == null) return (label, "없음", "주간 한도만");
         if (q == null) return (label, "—", "");
-        return (label, Math.Floor(q.Remaining).ToString("0", CultureInfo.InvariantCulture) + "%", ShortCountdown(q, now));
+        bool exhausted = q.Remaining <= 0 && !q.ResetPending(now);
+        string time = LongCountdown(q, now);
+        return (label, Math.Floor(q.Remaining).ToString("0", CultureInfo.InvariantCulture) + "%", exhausted ? time + " 후" : time);
     }
 
     // Two rows (5h on top, 주 below) beside a ring. The shown row gets the service dot and a faint tint of its color;
     // an exhausted row is red. The taskbar version of the detail window's rows.
-    private static void DrawRows(Graphics g, float x, float cy, RingService s, DateTimeOffset now, bool light, Color ink, Color stale, int width, bool withTime)
+    private static void DrawRows(Graphics g, float x, float cy, RingService s, DateTimeOffset now, bool light, Color ink, Color stale)
     {
         var muted = light ? Color.FromArgb(92, 92, 92) : Color.FromArgb(176, 176, 176);
         using var labelFont = Font(TokenFont, 11);
         using var valueFont = Font(NumberFont, 12);
-        using var smallValueFont = Font(NumberFont, 10.5f);
         using var timeFont = Font(TokenFont, 11);
-        // Wide rows: [dot][label][value][countdown]; medium rows: [dot][label][value] packed into 45 DIP.
-        float labelX = withTime ? RowLabelX : MediumLabelX, labelWidth = withTime ? RowLabelWidth : MediumLabelWidth;
-        float valueRight = withTime ? RowValueRight : width - 1;
         using var left = new StringFormat(StringFormat.GenericTypographic) { LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap };
         using var right = new StringFormat(StringFormat.GenericTypographic) { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap };
         foreach (var (q, fiveHour, top) in new[] { (s.FiveHour, true, cy - RowHeight - 1f), (s.Weekly, false, cy + 1f) })
@@ -222,23 +223,21 @@ internal static class RingArtwork
             bool shown = !s.Warning && s.IsShown(q);
             bool exhausted = !s.Warning && q is { Remaining: <= 0 } && !q.ResetPending(s.At);
             bool low = !s.Warning && q != null && q.Remaining < LowThreshold;
-            var row = new RectangleF(x, top, width, RowHeight);
+            var row = new RectangleF(x, top, RowWidth, RowHeight);
             if (shown)
             {
                 using var tint = new SolidBrush(Color.FromArgb(light ? 44 : 62, s.Stale ? stale : s.Accent));
                 using var path = RoundedRect(row, 3);
                 g.FillPath(tint, path);
                 using var dot = new SolidBrush(s.Stale ? stale : s.Accent);
-                g.FillEllipse(dot, x + (withTime ? 2.5f : 1.2f), top + RowHeight / 2f - 2f, 3.6f, 3.6f);
+                g.FillEllipse(dot, x + 2.5f, top + RowHeight / 2f - 2f, 3.6f, 3.6f);
             }
             using var labelBrush = new SolidBrush(s.Stale ? stale : muted);
             using var valueBrush = new SolidBrush(s.Stale ? stale : s.Warning ? muted : low || exhausted ? Low : value == "없음" ? muted : ink);
             using var timeBrush = new SolidBrush(s.Stale ? stale : exhausted ? Low : muted);
-            g.DrawString(label, labelFont, labelBrush, new RectangleF(x + labelX, top, labelWidth, RowHeight), left);
-            // "100%" is the one value too long for the packed medium column; it drops half a point there.
-            var font = value == "없음" ? labelFont : !withTime && value.Length >= 4 ? smallValueFont : valueFont;
-            g.DrawString(value, font, valueBrush, new RectangleF(x + labelX + labelWidth, top + .5f, valueRight - labelX - labelWidth, RowHeight), right);
-            if (withTime && time.Length > 0) g.DrawString(time, timeFont, timeBrush, new RectangleF(x + RowTimeX, top, RowTimeWidth, RowHeight), left);
+            g.DrawString(label, labelFont, labelBrush, new RectangleF(x + RowLabelX, top, RowLabelWidth, RowHeight), left);
+            g.DrawString(value, value == "없음" ? labelFont : valueFont, valueBrush, new RectangleF(x + RowLabelX + RowLabelWidth, top + .5f, RowValueRight - RowLabelX - RowLabelWidth, RowHeight), right);
+            if (time.Length > 0) g.DrawString(time, timeFont, timeBrush, new RectangleF(x + RowTimeX, top, RowTimeWidth, RowHeight), left);
         }
     }
 
