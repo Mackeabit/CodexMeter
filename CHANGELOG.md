@@ -7,6 +7,7 @@
 - Dual: the ring center shows the 5-hour value first, falling back to the weekly value when Codex reports no 5-hour limit for the account or the 5-hour limit is used up. Rings are swapped: outer = weekly, inner = 5-hour.
 - Dual: the detail window marks the row the center number comes from with a dot and a tint of the service color. When Codex reports no 5-hour window for the account, the row shows "없음 · 주간 한도만 있음" and draws no inner ring, unlike an unknown value (`—`).
 - Dual: a limit at 0% marks the service unusable: a red "사용 불가" badge, "소진 · 2:59 후 재개" on that row, and `불가` with the time until use resumes beside the taskbar ring. The tray tooltip and hover text say the same. A 0% window whose reset time has passed no longer counts as unusable.
+- Dual: the compact ("작게") view shows Codex and Claude side by side, each with a small ring (same center rule), the window its number comes from or "사용 불가", and the countdown. It used to show only Codex's lowest window.
 - Classic and Expanded are unchanged.
 
 ## 2.3.1 — 2026-11-27

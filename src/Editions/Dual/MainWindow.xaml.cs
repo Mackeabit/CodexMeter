@@ -55,6 +55,7 @@ public partial class MainWindow : Window
         Topmost = prefs.Topmost; Opacity = prefs.Opacity;
         client.PreferredPath = prefs.CodexPath;
         BuildDetailView();
+        BuildCompactView();
         ApplyView(false);
         Loaded += async (_, _) =>
         {
@@ -234,6 +235,7 @@ public partial class MainWindow : Window
         }
         ExtraWindows.Visibility = ExtraWindows.Children.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         RenderDetail(now);
+        RenderCompact(now);
         RenderSegments();
     }
     private void ApplyView(bool save)
@@ -243,7 +245,9 @@ public partial class MainWindow : Window
         // The shared Codex-first detail layout stays hidden; Dual shows both services with equal weight.
         Expanded.Visibility = Visibility.Collapsed;
         if (DetailPanel != null) DetailPanel.Visibility = !bars && !prefs.Compact ? Visibility.Visible : Visibility.Collapsed;
-        Compact.Visibility = !bars && prefs.Compact ? Visibility.Visible : Visibility.Collapsed;
+        // The shared compact layout is Codex-only; Dual shows both services in its own compact view.
+        Compact.Visibility = Visibility.Collapsed;
+        if (DualCompact != null) DualCompact.Visibility = !bars && prefs.Compact ? Visibility.Visible : Visibility.Collapsed;
         SegmentRows.Visibility = bars ? Visibility.Visible : Visibility.Collapsed;
         Outer.Margin = new Thickness(bars ? 3 : 10);
         Outer.CornerRadius = new CornerRadius(bars ? 5 : 13);

@@ -197,10 +197,10 @@ public partial class MainWindow
         return wrap;
     }
 
-    private ImageSource RingImage(RingService s)
+    private ImageSource RingImage(RingService s, double size = 64)
     {
         float scale = (float)Math.Max(1, VisualTreeHelper.GetDpi(this).DpiScaleX);
-        using var bitmap = RingArtwork.RenderRing(s, 64, scale, light: true);
+        using var bitmap = RingArtwork.RenderRing(s, (float)size, scale, light: true);
         using var stream = new MemoryStream();
         bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
         stream.Position = 0;
