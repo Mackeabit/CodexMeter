@@ -6,6 +6,53 @@ namespace CodexMeter;
 
 internal static class DesignVerification
 {
+    // The five states agreed for the center number: normal, no 5-hour plan, weekly low, 5-hour exhausted, weekly exhausted.
+    private static void StateChecks(string folder, DateTimeOffset now, Quota week, Quota first, Snapshot codex, ClaudeReading claude, Action<bool, string> check)
+    {
+        RingService Codex(params Quota[] windows) => TaskbarHost.Services(codex with { Windows = windows }, false, claude, now)[0];
+
+        var noFive = Codex(week);
+        check(noFive.NoFiveHour && noFive.Shown == noFive.Weekly && noFive.Center == "37" && !noFive.Blocked,
+            "a plan without a 5-hour limit shows its weekly value and stays usable");
+        var unknownFive = TaskbarHost.Services(codex, false, claude with { Windows = new[] { claude.Windows[0] with { Reset = now.AddMinutes(-1) }, claude.Windows[1] } }, now)[1];
+        check(!unknownFive.NoFiveHour && unknownFive.FiveHour == null && unknownFive.Center == "46",
+            "a 5-hour value that is only unknown (reset passed) is not mistaken for a plan without that limit");
+
+        var weeklyLow = Codex(first with { Used = 10 }, week with { Used = 88 });
+        check(weeklyLow.Center == "90" && !weeklyLow.Alert && !weeklyLow.Blocked, "a low weekly value does not take over the center while the 5-hour window has room");
+
+        var fiveGone = Codex(first with { Used = 100 }, week with { Used = 40 });
+        var fiveToken = RingArtwork.Token(fiveGone, fiveGone.Shown!, now);
+        check(fiveGone.Shown == fiveGone.Weekly && fiveGone.Center == "60" && fiveGone.Blocked && fiveGone.Alert && fiveGone.Blocking == fiveGone.FiveHour &&
+            fiveToken.Top == RingArtwork.BlockedToken && fiveToken.Bottom == RingArtwork.ShortCountdown(first, now),
+            "an exhausted 5-hour window shows the weekly value, marks the service unusable and counts down to the 5-hour reset");
+
+        var weekGone = Codex(first with { Used = 10 }, week with { Used = 100 });
+        check(weekGone.Center == "90" && weekGone.Blocked && weekGone.Blocking == weekGone.Weekly && RingArtwork.Token(weekGone, weekGone.Shown!, now).Bottom == "1일",
+            "an exhausted weekly window marks the service unusable until the weekly reset while the center keeps the 5-hour value");
+
+        var bothGone = Codex(first with { Used = 100 }, week with { Used = 100 });
+        check(bothGone.Blocking == bothGone.Weekly, "with both windows exhausted, use resumes at the later reset");
+        check(!(Codex(first, week) with { Warning = true }).Blocked, "a server denial keeps its own warning instead of the blocked state");
+
+        // Geometry: the inner (5-hour) track disappears for a plan without that limit.
+        int InnerPixels(RingService s)
+        {
+            using var image = RingArtwork.Render(RingArtwork.PreferredWidth, 44, 1, new[] { s, s }, false, now);
+            // A point on the inner ring's left edge, between the center digits and the outer ring.
+            // At 1x: center (22, 22), outer stroke x 4..7.6, inner stroke x 9.9..13, digits start near x 15.
+            return Enumerable.Range(10, 3).Sum(x => Enumerable.Range(20, 4).Count(y => image.GetPixel(x, y).A > 40));
+        }
+        check(InnerPixels(Codex(first, week)) > 0 && InnerPixels(noFive) == 0, "a plan without a 5-hour limit draws no inner ring");
+
+        TaskbarHost.SavePreview(Path.Combine(folder, "rings-five-hour-exhausted.png"), codex with { Windows = new[] { first with { Used = 100 }, week with { Used = 40 } } }, claude, false, 1.5f, light: false, now: now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "rings-weekly-exhausted.png"), codex with { Windows = new[] { first with { Used = 10 }, week with { Used = 100 } } }, claude, false, 1.5f, light: false, now: now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "rings-no-five-hour.png"), codex with { Windows = new[] { week } }, claude, false, 1.5f, light: false, now: now);
+        string hover = TaskbarHost.HoverText(codex with { Windows = new[] { first with { Used = 100 }, week } }, false, claude, now);
+        check(hover.Contains("사용 불가") && hover.Contains("• 주간"), $"hover text marks the shown window and the unusable state ({hover.Replace("\n", " / ")})");
+        check(TaskbarHost.HoverText(codex with { Windows = new[] { week } }, false, claude, now).Contains("요금제 한도 아님"), "hover text says the plan has no 5-hour limit");
+    }
+
     internal static void Run(string folder, Action<bool, string> check)
     {
         var now = DateTimeOffset.Now;
@@ -38,18 +85,22 @@ internal static class DesignVerification
             check(hovered.GetPixel(RingArtwork.PreferredWidth - 3, 22).A > corner.A, "pointer hover adds a visible wash");
         }
         check(RingArtwork.Font(RingArtwork.NumberFont, 12).Name is RingArtwork.NumberFont or "Segoe UI", "ring numbers use Segoe UI Variable when installed, else Segoe UI");
-        check(services[0].Center == "37" && services[1].Center == "46", "ring centers show the lower remaining value per service");
-        check(services[0].Lowest?.Minutes == 10080 && services[1].Lowest?.Minutes == 10080 && RingArtwork.WindowName(services[0].Lowest!) == "주", "each reset token names the lowest window of its own service");
+        check(services[0].Center == "63" && services[1].Center == "88", "ring centers show the 5-hour value first, even when the weekly value is lower");
+        check(services.All(s => s.Shown?.Minutes == 300 && !s.Blocked) && RingArtwork.Token(services[0], services[0].Shown!, now).Top == "5h", "each reset token names the window the center number shows");
+        StateChecks(folder, now, week, first, codex, claude, check);
         var low = TaskbarHost.Services(codex with { Windows = new[] { first with { Used = 92 }, week } }, false, claude, now);
         using (var image = RingArtwork.Render(RingArtwork.PreferredWidth, 44, 1, low, false, now))
         {
-            int red = Enumerable.Range(0, 46).Sum(x => Enumerable.Range(0, 44).Count(y => image.GetPixel(x, y).ToArgb() == RingArtwork.Low.ToArgb()));
+            // The 5-hour ring is the lighter inner ring, so look for red-toned pixels (coral has G 128) rather than one exact value.
+            int red = Enumerable.Range(0, 46).Sum(x => Enumerable.Range(0, 44).Count(y => image.GetPixel(x, y) is { A: > 100, R: > 180, G: < 100, B: < 100 }));
             check(red > 20, "a window under 20% turns its ring red");
         }
         using (var image = RingArtwork.Render(RingArtwork.PreferredWidth, 44, 1, services, false, now))
         {
-            int purple = Enumerable.Range(46, 46).Sum(x => Enumerable.Range(0, 44).Count(y => image.GetPixel(x, y).ToArgb() == RingService.ClaudeAccent.ToArgb()));
-            int coral = Enumerable.Range(0, 46).Sum(x => Enumerable.Range(0, 44).Count(y => image.GetPixel(x, y).ToArgb() == RingService.CodexAccent.ToArgb()));
+            // Each service's slot: [ring][gap][token] then the service gap; Claude starts at the second slot.
+            int slot = RingArtwork.Pad + RingArtwork.RingCell + RingArtwork.TokenGap + RingArtwork.TokenWidth + RingArtwork.ServiceGap;
+            int purple = Enumerable.Range(slot, RingArtwork.PreferredWidth - slot).Sum(x => Enumerable.Range(0, 44).Count(y => image.GetPixel(x, y).ToArgb() == RingService.ClaudeAccent.ToArgb()));
+            int coral = Enumerable.Range(0, slot).Sum(x => Enumerable.Range(0, 44).Count(y => image.GetPixel(x, y).ToArgb() == RingService.CodexAccent.ToArgb()));
             check(purple > 20 && coral > 20, "Codex and Claude rings use their own colors");
         }
         var unknown = TaskbarHost.Services(null, false, null, now);
@@ -66,7 +117,7 @@ internal static class DesignVerification
         {
             var fmt = System.Drawing.StringFormat.GenericTypographic;
             float widest = new[] { "6일", "23:59", "59분", "확인", "—" }.Max(t => g.MeasureString(t, bottom, System.Drawing.PointF.Empty, fmt).Width);
-            widest = Math.Max(widest, new[] { "5h", "주" }.Max(t => g.MeasureString(t, top, System.Drawing.PointF.Empty, fmt).Width));
+            widest = Math.Max(widest, new[] { "5h", "주", RingArtwork.BlockedToken }.Max(t => g.MeasureString(t, top, System.Drawing.PointF.Empty, fmt).Width));
             check(widest <= RingArtwork.TokenWidth, $"longest reset token ({widest:0.#} DIP) fits beside its ring ({RingArtwork.TokenWidth} DIP)");
         }
         var area = new System.Drawing.Rectangle(0, 0, 2560, 72);

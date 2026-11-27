@@ -115,8 +115,9 @@ public partial class MainWindow : Window
         var now = DateTimeOffset.Now;
         bool stale = IsStale(now);
         var services = TaskbarHost.Services(snapshot, stale, claude, now, ClaudeStale(now));
-        var fresh = services.Where(x => !x.Warning && !x.Stale && x.Lowest != null).Select(x => x.Lowest!).OrderBy(x => x.Remaining).FirstOrDefault();
-        var any = services.Where(x => !x.Warning && x.Lowest != null).Select(x => x.Lowest!).OrderBy(x => x.Remaining).FirstOrDefault();
+        // Each service contributes the number its ring shows (5-hour first); the tray shows the lower of the two.
+        var fresh = services.Where(x => !x.Warning && !x.Stale && x.Shown != null).Select(x => x.Shown!).OrderBy(x => x.Remaining).FirstOrDefault();
+        var any = services.Where(x => !x.Warning && x.Shown != null).Select(x => x.Shown!).OrderBy(x => x.Remaining).FirstOrDefault();
         var main = fresh ?? any;
         string text = main == null ? (stale ? "!" : "—") : fresh == null ? "!" : Math.Floor(main.Remaining).ToString();
         bool light = TrayArtwork.IsLightTaskbar();
@@ -131,7 +132,7 @@ public partial class MainWindow : Window
         DestroyIcon(h);
         tray.Icon = icon;
         currentIcon?.Dispose(); currentIcon = icon;
-        string Part(RingService x) => x.Lowest is Quota q ? $"{x.Short} {q.Remaining:0}%" + (x.Stale ? "(이전 값)" : "") : $"{x.Short} 미확인";
+        string Part(RingService x) => x.Blocked ? $"{x.Short} 사용 불가" : x.Shown is Quota q ? $"{x.Short} {RingArtwork.WindowName(q)} {q.Remaining:0}%" + (x.Stale ? "(이전 값)" : "") : $"{x.Short} 미확인";
         var label = "Codex Meter · " + string.Join(" · ", services.Select(Part));
         tray.Text = label.Length > 127 ? label[..127] : label;
     }

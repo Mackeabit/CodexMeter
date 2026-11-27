@@ -102,7 +102,7 @@ public partial class MainWindow
         string errors = string.Join("\n", new[] { error, claude == null || claudeOld ? claudePoller.LastError : null }.Where(x => !string.IsNullOrEmpty(x)));
         bool anyOld = error != null || codexOld || claudeOld;
         string updated = $"{prefs.IntervalSeconds / 60}분마다 갱신 · Codex·Claude 함께";
-        string state = string.Join("|", services.Select(s => $"{s.Center}:{s.Stale}:{s.Warning}:{Row(s.FiveHour, now)}:{Row(s.Weekly, now)}"))
+        string state = string.Join("|", services.Select(s => $"{s.Center}:{s.Stale}:{s.Warning}:{s.Shown?.Minutes}:{s.NoFiveHour}:{Row(s.Blocking, now)}:{Row(s.FiveHour, now)}:{Row(s.Weekly, now)}"))
             + $"|{codexStatus}|{claudeStatus}|{codexExtra}|{plan}|{errors}|{anyOld}|{updated}";
         if (state == detailState) return;
         detailState = state;
@@ -118,7 +118,7 @@ public partial class MainWindow
 
     private static string Row(Quota? q, DateTimeOffset now) => q == null ? "-" : $"{Math.Floor(q.Remaining)}:{q.Countdown(now)}";
 
-    // Ring on the left; name, plan and status on top; one row each for the 5-hour and weekly limits.
+    // Ring on the left (outer weekly, inner 5-hour); name, plan and status on top; one row each for the 5-hour and weekly limits.
     private void FillSection(StackPanel section, RingService s, string? plan, string status, string? note, DateTimeOffset now)
     {
         section.Children.Clear();
@@ -127,7 +127,7 @@ public partial class MainWindow
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
         grid.ColumnDefinitions.Add(new ColumnDefinition());
         var ring = new Image { Width = 64, Height = 64, Source = RingImage(s), VerticalAlignment = VerticalAlignment.Top, SnapsToDevicePixels = true };
-        System.Windows.Automation.AutomationProperties.SetName(ring, $"{s.Short} {s.Center}% 남음");
+        System.Windows.Automation.AutomationProperties.SetName(ring, $"{s.Short} {s.Shown?.Duration} {s.Center}% 남음" + (s.Blocked ? ", 사용 불가" : ""));
         grid.Children.Add(ring);
 
         var body = new StackPanel();
@@ -142,9 +142,16 @@ public partial class MainWindow
         if (!string.IsNullOrEmpty(plan))
             name.Children.Add(new Border { BorderBrush = Brush("#DDDDDD"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 1, 5, 1), Margin = new Thickness(8, 1, 0, 1), VerticalAlignment = VerticalAlignment.Center, Child = new TextBlock { Text = plan, FontSize = 9, FontWeight = FontWeights.SemiBold, Foreground = Brush("#606060") } });
         top.Children.Add(name);
-        var statusText = new TextBlock { Text = status, FontSize = 11, Foreground = Brush(MutedText), VerticalAlignment = VerticalAlignment.Center };
-        Grid.SetColumn(statusText, 1);
-        top.Children.Add(statusText);
+        // A window at 0% means the service cannot be used until that window resets. The pill takes the status slot
+        // (the update time stays in the tooltip); a stale or failed status keeps its place because it matters more.
+        // The resume time is on the exhausted row itself ("소진 · 2:59 후 재개"), so the pill stays short enough to sit beside a plan badge.
+        FrameworkElement statusView = s.Blocking is Quota blocking && !s.Stale
+            ? new Border { Background = Brush(BlockedBack), CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 1, 6, 1), Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = $"{status} · {RingArtwork.ShortCountdown(blocking, now)} 후 사용 가능",
+                Child = new TextBlock { Text = "사용 불가", FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Brush(LowText) } }
+            : new TextBlock { Text = status, FontSize = 11, Foreground = Brush(MutedText), VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(statusView, 1);
+        top.Children.Add(statusView);
         body.Children.Add(top);
         body.Children.Add(LimitRow("5시간", s.FiveHour, s, now));
         body.Children.Add(LimitRow("주간", s.Weekly, s, now));
@@ -153,26 +160,41 @@ public partial class MainWindow
         section.Children.Add(grid);
     }
 
+    private const string BlockedBack = "#FCEBEB";
+
+    // The row the ring's center number comes from gets a service-colored dot and a faint tint of that color.
+    // A plan without a 5-hour limit says so instead of looking like missing data.
     private UIElement LimitRow(string label, Quota? q, RingService s, DateTimeOffset now)
     {
-        var row = new Grid { Margin = new Thickness(0, 2, 0, 2) };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(40) });
+        bool shown = !s.Warning && s.IsShown(q);
+        bool absent = q == null && label == "5시간" && s.NoFiveHour;
+        bool exhausted = q != null && !s.Warning && q.Remaining <= 0;
+        var accent = s.Accent;
+        var row = new Grid();
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(46) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(48) });
         row.ColumnDefinitions.Add(new ColumnDefinition());
         bool low = q != null && !s.Warning && q.Remaining < RingArtwork.LowThreshold;
         string valueColor = s.Warning ? LowText : s.Stale ? StaleText : low ? LowText : InkText;
-        row.Children.Add(new TextBlock { Text = label, FontSize = 12, Foreground = Brush(MutedText), VerticalAlignment = VerticalAlignment.Center });
-        var value = new TextBlock { FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Brush(valueColor), VerticalAlignment = VerticalAlignment.Center, FontFamily = new FontFamily("Segoe UI Variable Display, Segoe UI") };
-        value.Text = s.Warning ? "!" : q == null ? "—" : $"{Math.Floor(q.Remaining).ToString("0", CultureInfo.InvariantCulture)}%";
+        var labelPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        if (shown) labelPanel.Children.Add(new Ellipse { Width = 6, Height = 6, Fill = new SolidColorBrush(Color.FromRgb(accent.R, accent.G, accent.B)), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 1, 5, 0) });
+        labelPanel.Children.Add(new TextBlock { Text = label, FontSize = 12, Foreground = Brush(MutedText), VerticalAlignment = VerticalAlignment.Center });
+        row.Children.Add(labelPanel);
+        var value = new TextBlock { FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Brush(absent ? MutedText : valueColor), VerticalAlignment = VerticalAlignment.Center, FontFamily = new FontFamily("Segoe UI Variable Display, Segoe UI") };
+        value.Text = s.Warning ? "!" : absent ? "없음" : q == null ? "—" : $"{Math.Floor(q.Remaining).ToString("0", CultureInfo.InvariantCulture)}%";
+        if (absent) { value.FontSize = 12; value.FontWeight = FontWeights.Normal; }
         Grid.SetColumn(value, 1);
         row.Children.Add(value);
-        var reset = new TextBlock { FontSize = 11, Foreground = Brush(MutedText), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        reset.Text = q == null ? "정보 없음" : q.Countdown(now);
+        var reset = new TextBlock { FontSize = 11, Foreground = Brush(exhausted && !s.Stale ? LowText : MutedText), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        reset.Text = absent ? "요금제 한도 아님" : q == null ? "정보 없음" : exhausted ? $"소진 · {RingArtwork.ShortCountdown(q, now)} 후 재개" : q.Countdown(now);
         Grid.SetColumn(reset, 2);
         row.Children.Add(reset);
-        row.ToolTip = q?.Reset is DateTimeOffset at ? $"{at.ToLocalTime():M월 d일 HH:mm} 리셋 (PC 현지시간)" : "리셋 시간 미제공";
-        System.Windows.Automation.AutomationProperties.SetName(row, $"{s.Short} {label} {value.Text} 남음, {reset.Text}");
-        return row;
+        // Negative left margin keeps the text aligned with the header while the tint gets a little padding.
+        var wrap = new Border { Child = row, CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 1, 5, 1), Margin = new Thickness(-5, 1, 0, 1),
+            Background = shown ? new SolidColorBrush(Color.FromArgb(38, accent.R, accent.G, accent.B)) : Brushes.Transparent };
+        wrap.ToolTip = absent ? "이 요금제에는 5시간 한도가 없습니다" : q?.Reset is DateTimeOffset at ? $"{at.ToLocalTime():M월 d일 HH:mm} 리셋 (PC 현지시간)" : "리셋 시간 미제공";
+        System.Windows.Automation.AutomationProperties.SetName(wrap, $"{s.Short} {label} {value.Text}" + (absent ? ", 요금제 한도 아님" : $" 남음, {reset.Text}") + (shown ? ", 링 가운데 표시" : ""));
+        return wrap;
     }
 
     private ImageSource RingImage(RingService s)

@@ -208,6 +208,18 @@ public static class Verification
                     Check(SectionText(window.CodexSection).Contains("Codex") && SectionText(window.CodexSection).Contains("100%") && SectionText(window.CodexSection).Contains("92%"), $"Codex section lists both of its limits ({SectionText(window.CodexSection)})");
                     Check(SectionText(window.ClaudeSection).Contains("Claude") && SectionText(window.ClaudeSection).Contains("61%") && SectionText(window.ClaudeSection).Contains("82%"), $"Claude section lists both of its limits with equal weight ({SectionText(window.ClaudeSection)})");
                     Check(window.DetailUpdatedText?.Text.StartsWith("1분마다 갱신") == true && window.RefreshSeconds == 60, "Codex and Claude share one refresh interval, one minute by default");
+                    // An exhausted 5-hour Codex window: weekly shown, service unusable until the 5-hour reset.
+                    window.SetSnapshot(balanced with { Windows = new[] { balanced.Windows[0] with { Used = 100 }, balanced.Windows[1] } });
+                    await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+                    window.Capture(Path.Combine(folder, "detail-five-hour-exhausted.png"));
+                    Check(SectionText(window.CodexSection).Contains("사용 불가") && SectionText(window.CodexSection).Contains("소진") && !SectionText(window.ClaudeSection).Contains("사용 불가"),
+                        $"an exhausted window marks only its own service unusable in the detail view ({SectionText(window.CodexSection)})");
+                    window.SetSnapshot(balanced with { Windows = new[] { balanced.Windows[1] } });
+                    await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+                    window.Capture(Path.Combine(folder, "detail-no-five-hour.png"));
+                    Check(SectionText(window.CodexSection).Contains("없음") && SectionText(window.CodexSection).Contains("요금제 한도 아님") && !SectionText(window.CodexSection).Contains("사용 불가"),
+                        $"a plan without a 5-hour limit says so and stays usable ({SectionText(window.CodexSection)})");
+                    window.SetSnapshot(balanced);
                     window.SetClaude(null);
                     await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                     window.Capture(Path.Combine(folder, "detail-no-claude.png"));

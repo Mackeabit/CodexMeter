@@ -18,7 +18,7 @@ This is an independent community project, not an OpenAI or Anthropic product. It
 | --- | --- |
 | Classic | Compact bars and text with a reset date/time suffix |
 | Expanded | A larger single limit, or two vertically stacked limits with reset times |
-| Dual | Two concentric-ring gauges for Codex and Claude: outer ring = 5-hour limit, inner ring = weekly limit, center = lower remaining value, with the lowest limit and time to its reset beside each ring |
+| Dual | Two concentric-ring gauges for Codex and Claude: outer ring = weekly limit, inner ring = 5-hour limit, center = the 5-hour value (the weekly value when a plan has no 5-hour limit or it is used up); beside each ring, the shown limit and time to its reset, or `불가` and the time until use resumes when a limit is at 0% |
 
 ![Classic](docs/images/classic.png)
 
