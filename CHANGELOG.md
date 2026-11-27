@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.3.1 — 2026-11-27
+
+- Dual: the detail window shows Codex and Claude with equal weight. Each service has its own ring, name, status and both limits (5-hour and weekly) with time to reset, replacing the Codex-first layout. Missing Claude data shows dashes and a login hint.
+- Dual: Codex and Claude share one refresh interval (1, 2 or 5 minutes). Dual starts at 1 minute when no settings exist; saved choices are kept. Claude data goes stale on the same schedule as Codex.
+- Each Claude refresh is still one minimal request that counts toward Claude usage (up to about 1,440 a day at 1 minute).
+- Classic and Expanded are unchanged.
+
 ## 2.3.0 — 2026-11-27
 
 - New **Dual** edition: Codex and Claude usage as two concentric-ring gauges on the taskbar. Outer ring = 5-hour limit, inner ring = weekly limit, center number = the lower remaining value, red under 20%. Beside each ring, the lowest limit (`5h`/`주`) and the time to its reset (at most four characters).

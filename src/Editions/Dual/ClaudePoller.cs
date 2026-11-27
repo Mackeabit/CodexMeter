@@ -12,11 +12,11 @@ namespace CodexMeter;
 /// <summary>
 /// Asks the Claude Code CLI for current limits by sending one minimal Haiku request
 /// (no tools, no MCP, no settings, short system prompt, no saved session) and reading
-/// the rate_limit_event from its stream-json output. Each poll spends a small amount of usage.
+/// the rate_limit_event from its stream-json output. Each poll spends a small amount of usage;
+/// the caller schedules polls on the meter's refresh interval.
 /// </summary>
 public sealed class ClaudePoller
 {
-    public static readonly TimeSpan Interval = TimeSpan.FromMinutes(15);
     private readonly SemaphoreSlim gate = new(1, 1);
     public string? LastError { get; private set; }
 

@@ -31,7 +31,7 @@ public partial class MainWindow : Window
     private readonly ClaudeUsageStore claudeStore = new();
     private readonly ClaudePoller claudePoller = new();
     private bool claudeBusy;
-    private DateTimeOffset nextClaudePoll = DateTimeOffset.MinValue, lastClaudeAttempt = DateTimeOffset.MinValue;
+    private DateTimeOffset lastClaudeAttempt = DateTimeOffset.MinValue;
     private bool busy, exiting;
     private string? trayState;
     private string? segmentedState;
@@ -47,9 +47,12 @@ public partial class MainWindow : Window
         alerts = new UsageAlerts(testing ? null : UsageAlerts.DefaultPath);
         InitializeComponent();
         if (!testing) try { if (File.Exists(settingsFile)) prefs = JsonSerializer.Deserialize<Preferences>(File.ReadAllText(settingsFile)) ?? new(); } catch { }
+        // Dual refreshes Codex and Claude together; a first run starts at one minute. Saved choices are kept.
+        if (testing || !File.Exists(settingsFile)) prefs.IntervalSeconds = 60;
         prefs.Normalize();
         Topmost = prefs.Topmost; Opacity = prefs.Opacity;
         client.PreferredPath = prefs.CodexPath;
+        BuildDetailView();
         ApplyView(false);
         Loaded += async (_, _) =>
         {
@@ -92,7 +95,10 @@ public partial class MainWindow : Window
         Left = Math.Clamp(Left, a.X, Math.Max(a.X, b.X - ActualWidth));
         Top = Math.Clamp(Top, a.Y, Math.Max(a.Y, b.Y - ActualHeight));
     }
-    private bool IsStale(DateTimeOffset now) => error != null || snapshot?.Main?.ResetPending(now) == true || (snapshot != null && now - snapshot.Fetched > TimeSpan.FromSeconds(Math.Max(180, prefs.IntervalSeconds * 2 + 15)));
+    private TimeSpan StaleAfter => TimeSpan.FromSeconds(Math.Max(180, prefs.IntervalSeconds * 2 + 15));
+    private bool IsStale(DateTimeOffset now) => error != null || snapshot?.Main?.ResetPending(now) == true || (snapshot != null && now - snapshot.Fetched > StaleAfter);
+    // Claude follows the same refresh interval, so it goes stale on the same schedule as Codex.
+    private bool ClaudeStale(DateTimeOffset now) => claude != null && now - claude.Updated > StaleAfter;
     public void ShowWidget() { Show(); WindowState = WindowState.Normal; }
     private void Save()
     {
@@ -106,7 +112,7 @@ public partial class MainWindow : Window
         if (tray == null) return;
         var now = DateTimeOffset.Now;
         bool stale = IsStale(now);
-        var services = TaskbarHost.Services(snapshot, stale, claude, now);
+        var services = TaskbarHost.Services(snapshot, stale, claude, now, ClaudeStale(now));
         var fresh = services.Where(x => !x.Warning && !x.Stale && x.Lowest != null).Select(x => x.Lowest!).OrderBy(x => x.Remaining).FirstOrDefault();
         var any = services.Where(x => !x.Warning && x.Lowest != null).Select(x => x.Lowest!).OrderBy(x => x.Remaining).FirstOrDefault();
         var main = fresh ?? any;
@@ -130,7 +136,7 @@ public partial class MainWindow : Window
     public async Task RefreshAsync()
     {
         if (busy || testing || exiting) return;
-        busy = true; RefreshButton.IsEnabled = false;
+        busy = true; RefreshButton.IsEnabled = false; SetDetailRefreshing(true);
         if (snapshot == null) StateText.Text = "연결 중";
         try
         {
@@ -147,7 +153,7 @@ public partial class MainWindow : Window
         {
             busy = false;
             if (error != null) nextPoll = DateTimeOffset.Now.AddMinutes(5);
-            RefreshButton.IsEnabled = true; RenderState(); UpdateTray(); UpdateTaskbar();
+            RefreshButton.IsEnabled = true; SetDetailRefreshing(claudeBusy); RenderState(); UpdateTray(); UpdateTaskbar();
         }
     }
     private void CheckAlert()
@@ -213,13 +219,16 @@ public partial class MainWindow : Window
             ExtraWindows.Children.Add(row);
         }
         ExtraWindows.Visibility = ExtraWindows.Children.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        RenderDetail(now);
         RenderSegments();
     }
     private void ApplyView(bool save)
     {
         double oldHeight = ActualHeight;
         bool bars = prefs.Segmented;
-        Expanded.Visibility = !bars && !prefs.Compact ? Visibility.Visible : Visibility.Collapsed;
+        // The shared Codex-first detail layout stays hidden; Dual shows both services with equal weight.
+        Expanded.Visibility = Visibility.Collapsed;
+        if (DetailPanel != null) DetailPanel.Visibility = !bars && !prefs.Compact ? Visibility.Visible : Visibility.Collapsed;
         Compact.Visibility = !bars && prefs.Compact ? Visibility.Visible : Visibility.Collapsed;
         SegmentRows.Visibility = bars ? Visibility.Visible : Visibility.Collapsed;
         Outer.Margin = new Thickness(bars ? 3 : 10);
@@ -238,12 +247,12 @@ public partial class MainWindow : Window
         var now = DateTimeOffset.Now;
         var windows = (snapshot?.Windows ?? Array.Empty<Quota>()).Concat(claude?.Known(now) ?? Array.Empty<Quota>()).OrderBy(q => q.Bucket == ClaudeReading.Bucket).ThenBy(q => q.Bucket).ThenBy(q => q.Minutes).Cast<Quota?>().ToArray();
         if (windows.Length == 0) windows = new Quota?[] { null };
-        string state = $"{IsStale(now)}:{snapshot?.Allowed}:{claude?.IsStale(now)}:" + string.Join("|", windows.Select(q => $"{q?.Bucket}:{q?.Label}:{q?.Minutes}:{q?.Remaining}:{q?.Reset:O}:{q?.Countdown(now)}"));
+        string state = $"{IsStale(now)}:{snapshot?.Allowed}:{ClaudeStale(now)}:" + string.Join("|", windows.Select(q => $"{q?.Bucket}:{q?.Label}:{q?.Minutes}:{q?.Remaining}:{q?.Reset:O}:{q?.Countdown(now)}"));
         if (state == segmentedState) return;
         segmentedState = state;
         SegmentRows.Children.Clear();
         foreach (var q in windows)
-            SegmentRows.Children.Add(SegmentView.CreateRow(q, windows.Length == 1, q?.Bucket == ClaudeReading.Bucket ? claude?.IsStale(now) == true : IsStale(now), q?.Bucket != ClaudeReading.Bucket && snapshot?.Allowed == false, now));
+            SegmentRows.Children.Add(SegmentView.CreateRow(q, windows.Length == 1, q?.Bucket == ClaudeReading.Bucket ? ClaudeStale(now) : IsStale(now), q?.Bucket != ClaudeReading.Bucket && snapshot?.Allowed == false, now));
     }
     private void DragWindow(object sender, MouseButtonEventArgs e)
     {
@@ -273,17 +282,22 @@ public partial class MainWindow : Window
         UpdateTaskbar();
         if (save && !testing) Save();
     }
-    // A recent report (statusLine or an earlier poll) makes a new request unnecessary; an expired window asks again sooner.
+    // Claude uses the same interval as Codex (1, 2 or 5 minutes). A report newer than one interval
+    // (statusLine or an earlier poll) makes a request unnecessary; an expired window asks again once.
     private async Task PollClaudeAsync(bool force = false)
     {
         var now = DateTimeOffset.Now;
         if (claudeBusy || exiting) return;
+        var interval = TimeSpan.FromSeconds(prefs.IntervalSeconds);
         // Re-ask once after a reset passes, never in a loop while the CLI keeps failing.
         var passed = claude?.Windows.Where(q => q.ResetPending(now)).Select(q => q.Reset!.Value).ToArray() ?? Array.Empty<DateTimeOffset>();
         bool expired = passed.Length > 0 && lastClaudeAttempt < passed.Max();
-        if (!force && now < nextClaudePoll && !expired) return;
-        if (!force && claude != null && now - claude.Updated < TimeSpan.FromMinutes(10) && !expired) { nextClaudePoll = claude.Updated + ClaudePoller.Interval; return; }
-        claudeBusy = true; lastClaudeAttempt = now;
+        if (!force && !expired)
+        {
+            if (now - lastClaudeAttempt < interval) return;
+            if (claude != null && now - claude.Updated < interval - TimeSpan.FromSeconds(5)) return;
+        }
+        claudeBusy = true; lastClaudeAttempt = now; SetDetailRefreshing(true);
         try
         {
             var reading = await claudePoller.PollAsync(lifetime.Token);
@@ -292,15 +306,14 @@ public partial class MainWindow : Window
         catch (OperationCanceledException) { }
         finally
         {
-            claudeBusy = false;
-            nextClaudePoll = DateTimeOffset.Now + ClaudePoller.Interval;
+            claudeBusy = false; SetDetailRefreshing(busy);
             if (!exiting) { RenderState(); UpdateTray(); UpdateTaskbar(); }
         }
     }
     private void UpdateTaskbar()
     {
         if (taskbarHost == null) return;
-        try { taskbarHost.Update(snapshot, IsStale(DateTimeOffset.Now), claude); }
+        try { var now = DateTimeOffset.Now; taskbarHost.Update(snapshot, IsStale(now), claude, ClaudeStale(now)); }
         catch { taskbarHost.ReportFailure(); }
     }
     private void UpdateProgress() { if (ProgressFill != null) ProgressFill.Width = Math.Max(0, ProgressTrack.ActualWidth * (snapshot?.Main?.Remaining ?? 0) / 100); }

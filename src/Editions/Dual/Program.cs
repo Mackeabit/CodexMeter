@@ -106,6 +106,12 @@ public static class Program
 
 public static class Verification
 {
+    internal static System.Collections.Generic.IEnumerable<string> FindText(System.Windows.DependencyObject root)
+    {
+        if (root is System.Windows.Controls.TextBlock t && !string.IsNullOrEmpty(t.Text)) yield return t.Text;
+        foreach (var child in System.Windows.LogicalTreeHelper.GetChildren(root).OfType<System.Windows.DependencyObject>())
+            foreach (var text in FindText(child)) yield return text;
+    }
     public static int Run(string[] args)
     {
         bool live = args.Contains("--verify-live");
@@ -190,7 +196,22 @@ public static class Verification
                     window.SetSnapshot(dual);
                     window.SetClaude(claudeFixture);
                     Check(window.ExtraWindows.Children.Count == 4, "Claude windows are listed beside Codex buckets in the detail view");
+                    var balanced = new Snapshot(new[] { new Quota("codex", "Codex", 0, 300, DateTimeOffset.Now.AddHours(3)), new Quota("codex", "Codex", 8, 10080, DateTimeOffset.Now.AddDays(6)) }, "prolite", 0, true, null, DateTimeOffset.Now);
+                    var claudeSample = new ClaudeReading(new[] { new Quota("claude", "Claude", 39, 300, DateTimeOffset.Now.AddMinutes(106)), new Quota("claude", "Claude", 18, 10080, DateTimeOffset.Now.AddDays(5)) }, DateTimeOffset.Now, "fixture");
+                    window.SetView(WindowView.Detail, false);
+                    window.SetSnapshot(balanced);
+                    window.SetClaude(claudeSample);
+                    await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+                    window.Capture(Path.Combine(folder, "detail-dual.png"));
+                    string SectionText(System.Windows.Controls.Panel? section) => section == null ? "" : string.Join(" ", FindText(section));
+                    Check(window.DetailPanel?.Visibility == Visibility.Visible && window.Expanded.Visibility == Visibility.Collapsed, "Dual detail view replaces the Codex-first layout");
+                    Check(SectionText(window.CodexSection).Contains("Codex") && SectionText(window.CodexSection).Contains("100%") && SectionText(window.CodexSection).Contains("92%"), $"Codex section lists both of its limits ({SectionText(window.CodexSection)})");
+                    Check(SectionText(window.ClaudeSection).Contains("Claude") && SectionText(window.ClaudeSection).Contains("61%") && SectionText(window.ClaudeSection).Contains("82%"), $"Claude section lists both of its limits with equal weight ({SectionText(window.ClaudeSection)})");
+                    Check(window.DetailUpdatedText?.Text.StartsWith("1분마다 갱신") == true && window.RefreshSeconds == 60, "Codex and Claude share one refresh interval, one minute by default");
                     window.SetClaude(null);
+                    await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+                    window.Capture(Path.Combine(folder, "detail-no-claude.png"));
+                    Check(SectionText(window.ClaudeSection).Contains("—"), "missing Claude data shows dashes, never zero"); 
                     string BarText(int row) => string.Concat(((System.Windows.Controls.Grid)window.SegmentRows.Children[row]).Children.OfType<System.Windows.Controls.TextBlock>().Single(n => (string?)n.Tag == "remaining").Inlines.OfType<System.Windows.Documents.Run>().Select(run => run.Text));
                     window.SetView(WindowView.Segmented, false);
                     window.SetSnapshot(bars);
@@ -208,7 +229,7 @@ public static class Verification
                     await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                     window.Capture(Path.Combine(folder, live ? "live-segmented.png" : "segmented-single.png"));
                     window.SetView(WindowView.Detail, false);
-                    Check(window.SegmentRows.Visibility == Visibility.Collapsed && window.Expanded.Visibility == Visibility.Visible && window.Width == 348, "segmented view returns to original detail layout");
+                    Check(window.SegmentRows.Visibility == Visibility.Collapsed && window.DetailPanel?.Visibility == Visibility.Visible && window.Width == 348, "segmented view returns to original detail layout");
                     SettingsVerification.Run(window, Check);
                     await PositionVerification.Run(window, Check);
                     window.Hide(); Check(!window.IsVisible, "hide works"); window.ShowWidget(); Check(window.IsVisible, "restore works");

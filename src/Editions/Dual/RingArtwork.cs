@@ -108,6 +108,33 @@ internal static class RingArtwork
         return bitmap;
     }
 
+    /// <summary>One service's ring for the detail window: same geometry and colors as the taskbar, larger.</summary>
+    internal static Bitmap RenderRing(RingService s, float sizeDip, float scale, bool light)
+    {
+        int px = Math.Max(1, (int)Math.Ceiling(sizeDip * scale));
+        var bitmap = new Bitmap(px, px, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        using var g = Graphics.FromImage(bitmap);
+        g.Clear(Color.Transparent);
+        g.ScaleTransform(scale, scale);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        g.TextRenderingHint = TextRenderingHint.AntiAlias;
+        var ink = light ? Color.FromArgb(26, 26, 26) : Color.FromArgb(242, 242, 242);
+        var stale = light ? Color.FromArgb(150, 150, 150) : Color.FromArgb(128, 128, 128);
+        float diameter = sizeDip - 2, c = sizeDip / 2;
+        float outerStroke = diameter * .085f, innerStroke = diameter * .075f, ringGap = diameter * .055f;
+        float outerR = (diameter - outerStroke) / 2, innerR = outerR - outerStroke / 2 - ringGap - innerStroke / 2;
+        DrawRing(g, c, c, outerR, outerStroke, s.FiveHour, s, stale, light, 255);
+        DrawRing(g, c, c, innerR, innerStroke, s.Weekly, s, stale, light, 200);
+        bool low = !s.Warning && s.Lowest is Quota q && q.Remaining < LowThreshold;
+        string text = s.Center;
+        using var font = Font(NumberFont, text.Length >= 3 ? diameter * .22f : diameter * .27f);
+        using var brush = new SolidBrush(s.Warning || low ? Low : s.Stale ? stale : ink);
+        using var center = new StringFormat(StringFormat.GenericTypographic) { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap };
+        g.DrawString(text, font, brush, new RectangleF(0, .5f, sizeDip, sizeDip), center);
+        return bitmap;
+    }
+
     // Two short lines beside a ring: which window is lowest (5h or 주) in the service's tone, and time until its reset.
     private static void DrawToken(Graphics g, float x, float cy, Quota q, RingService s, DateTimeOffset now, bool light, Color ink, Color stale)
     {

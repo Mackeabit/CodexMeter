@@ -73,6 +73,7 @@ internal sealed class TaskbarHost : Forms.NativeWindow, IDisposable
     private Snapshot? snapshot;
     private bool stale;
     private ClaudeReading? claude;
+    private bool? claudeStale;
     private float scale = 1;
     private bool pointerInside;
     private int lastWidth, lastHeight;
@@ -93,9 +94,9 @@ internal sealed class TaskbarHost : Forms.NativeWindow, IDisposable
         menu.Items.Add("새로고침", null, (_, _) => refresh());
         menu.Items.Add("작업표시줄 표시 끄기", null, (_, _) => disable());
     }
-    public void Update(Snapshot? value, bool old, ClaudeReading? claudeValue)
+    public void Update(Snapshot? value, bool old, ClaudeReading? claudeValue, bool? claudeOld = null)
     {
-        snapshot = value; stale = old; claude = claudeValue;
+        snapshot = value; stale = old; claude = claudeValue; claudeStale = claudeOld;
         var bar = TaskbarNative.FindWindow("Shell_TrayWnd", null);
         if (bar == IntPtr.Zero) { hover?.Hide(); Status = "다시 연결 대기 중"; return; }
         if (bar != parent || Handle == IntPtr.Zero || !TaskbarNative.IsWindow(Handle))
@@ -109,7 +110,7 @@ internal sealed class TaskbarHost : Forms.NativeWindow, IDisposable
         }
         scale = Math.Max(1, TaskbarNative.GetDpiForWindow(bar) / 96f);
         hover ??= new UsageToolTip(Handle);
-        hover.Update(HoverText(snapshot, stale, claude, DateTimeOffset.Now));
+        hover.Update(HoverText(snapshot, stale, claude, DateTimeOffset.Now, claudeStale));
         if (occupancy?.IsCompleted == true)
         {
             if (occupancy.IsCompletedSuccessfully) { occupied = occupancy.Result.Length > 0 ? occupancy.Result : null; scanTime = DateTime.UtcNow; }
@@ -174,7 +175,7 @@ internal sealed class TaskbarHost : Forms.NativeWindow, IDisposable
         using var bitmap = RingArtwork.Composite(artwork, isLight);
         bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
     }
-    internal static RingService[] Services(Snapshot? codex, bool codexStale, ClaudeReading? claude, DateTimeOffset now)
+    internal static RingService[] Services(Snapshot? codex, bool codexStale, ClaudeReading? claude, DateTimeOffset now, bool? claudeStale = null)
     {
         var codexRows = codex?.Windows.Where(q => q.Bucket == "codex").ToArray() ?? Array.Empty<Quota>();
         if (codexRows.Length == 0 && codex?.Main is Quota main) codexRows = new[] { main };
@@ -187,23 +188,23 @@ internal sealed class TaskbarHost : Forms.NativeWindow, IDisposable
         return new[]
         {
             new RingService("Codex", RingService.CodexAccent, codexFive, codexWeek, codexStale, codexWarning),
-            new RingService("Claude", RingService.ClaudeAccent, Pick(known.ToArray(), 300), Pick(known.ToArray(), 10080), claude?.IsStale(now) == true, false),
+            new RingService("Claude", RingService.ClaudeAccent, Pick(known.ToArray(), 300), Pick(known.ToArray(), 10080), claudeStale ?? claude?.IsStale(now) == true, false),
         };
     }
-    internal static string HoverText(Snapshot? codex, bool codexStale, ClaudeReading? claude, DateTimeOffset now)
+    internal static string HoverText(Snapshot? codex, bool codexStale, ClaudeReading? claude, DateTimeOffset now, bool? claudeStale = null)
     {
         string Block(string name, Quota? five, Quota? week, bool old, bool denied, string? note) =>
             name + (note == null ? "" : " · " + note) + "\n" +
             string.Join("\n", new[] { ("5시간", five), ("주간", week) }.Where(p => p.Item2 != null).Select(p => p.Item1 + " · " + UsageHover.Describe(p.Item2, old, denied, now).Replace("\n", " · ")))
             + (five == null && week == null ? "사용량 미확인" : "");
-        var services = Services(codex, codexStale, claude, now);
+        var services = Services(codex, codexStale, claude, now, claudeStale);
         string claudeNote = claude == null ? "Claude Code 사용 후 표시" : $"{claude.Updated.ToLocalTime():HH:mm} 기준";
         return "Codex Meter · 다음 리셋 (PC 현지시간)\n\n" +
             Block("Codex", services[0].FiveHour, services[0].Weekly, codexStale, codex?.Allowed == false, null) + "\n\n" +
             Block("Claude", services[1].FiveHour, services[1].Weekly, services[1].Stale, false, claudeNote);
     }
     private Bitmap Render(int width, int height) =>
-        RingArtwork.Render(width, height, scale, Services(snapshot, stale, claude, DateTimeOffset.Now), TrayArtwork.IsLightTaskbar(), DateTimeOffset.Now, pointerInside);
+        RingArtwork.Render(width, height, scale, Services(snapshot, stale, claude, DateTimeOffset.Now, claudeStale), TrayArtwork.IsLightTaskbar(), DateTimeOffset.Now, pointerInside);
     [StructLayout(LayoutKind.Sequential)] private struct TrackMouse { public int Size; public uint Flags; public IntPtr Window; public uint HoverTime; }
     [DllImport("user32.dll")] private static extern bool TrackMouseEvent(ref TrackMouse track);
     [StructLayout(LayoutKind.Sequential)] private struct Paint { public IntPtr DC; public int Erase; public TaskbarNative.Rect Rect; public int Restore, IncUpdate; [MarshalAs(UnmanagedType.ByValArray, SizeConst=32)] public byte[] Reserved; }
