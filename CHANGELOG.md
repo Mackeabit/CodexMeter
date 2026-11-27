@@ -2,7 +2,7 @@
 
 ## 2.3.5 — 2026-11-28
 
-- Dual taskbar: clearer text. Labels and times use brighter tones (dark taskbar 210/228 instead of a single 176 grey; light taskbar 64/40 instead of 92), at least 9:1 contrast, and 12 px instead of 11 px; glyphs are grid-fitted to the pixel grid for sharper edges.
+- Dual taskbar: clearer text. Labels and times use brighter tones (dark taskbar 210/228 instead of a single 176 grey; light taskbar 64/40 instead of 92), at least 9:1 contrast, and 12 px instead of 11 px; glyphs are grid-fitted to the pixel grid for sharper edges. The full layout widens to 423 DIP so the longest time fits with room for font metric differences between machines.
 - Dual: larger ring numbers (about 15 px instead of 12 px on a 150% taskbar), capped so they still clear the inner ring on small 40 px taskbars. The detail window ring numbers grow too.
 - Classic and Expanded are unchanged.
 

@@ -47,7 +47,7 @@ internal static class RingArtwork
     // left until that reset ("6일 13시간", "4시간 17분"); the row behind the center number gets a service-colored dot
     // and tint, like the detail window. Words are never abbreviated here.
     internal const int RowGap = 5;
-    internal const int RowWidth = 154;
+    internal const int RowWidth = 160;   // time column 82 DIP: the longest time measured 74 here, 76.3 on the CI runner
     internal const int WideServiceGap = 9;
     internal const int WideWidth = Pad + 2 * (RingCell + RowGap + RowWidth) + WideServiceGap + Pad;
     // Two 16 DIP rows and the 2 DIP between them need 34 DIP. A 40 px taskbar at 100% leaves 36 DIP for the meter
