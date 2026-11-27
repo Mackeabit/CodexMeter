@@ -49,8 +49,8 @@ internal static class DesignVerification
 
         using (var probe = new System.Drawing.Bitmap(10, 10))
         using (var g = System.Drawing.Graphics.FromImage(probe))
-        using (var label = RingArtwork.Font(RingArtwork.TokenFont, 11))
-        using (var value = RingArtwork.Font(RingArtwork.NumberFont, 12))
+        using (var label = RingArtwork.Font(RingArtwork.TokenFont, RingArtwork.RowTextSize))
+        using (var value = RingArtwork.Font(RingArtwork.NumberFont, RingArtwork.RowTextSize + .5f))
         {
             var fmt = System.Drawing.StringFormat.GenericTypographic;
             float W(string t, System.Drawing.Font f) => g.MeasureString(t, f, System.Drawing.PointF.Empty, fmt).Width;
@@ -59,7 +59,24 @@ internal static class DesignVerification
             float timeMax = new[] { "6일 23시간", "23시간 59분", "4시간 59분 후", "6일 23시간 후", "59분", "확인 중", "주간 한도만", "—" }.Max(t => W(t, label));
             check(labelMax <= RingArtwork.RowLabelWidth && valueMax <= RingArtwork.RowValueRight - RingArtwork.RowLabelX - RingArtwork.RowLabelWidth && timeMax <= RingArtwork.RowTimeWidth,
                 $"full row text fits its columns (label {labelMax:0.#}/{RingArtwork.RowLabelWidth}, value {valueMax:0.#}/{RingArtwork.RowValueRight - RingArtwork.RowLabelX - RingArtwork.RowLabelWidth}, time {timeMax:0.#}/{RingArtwork.RowTimeWidth:0.#} DIP)");
+
+            // Larger ring numbers must still clear the inner ring, on the laptop (36 DIP ring) and the 40 px desktop (28).
+            foreach (float d in new[] { 36f, 28f })
+            {
+                using var two = RingArtwork.Font(RingArtwork.NumberFont, RingArtwork.CenterFontSize("88", d));
+                using var three = RingArtwork.Font(RingArtwork.NumberFont, RingArtwork.CenterFontSize("100", d));
+                float widest = Math.Max(W("88", two), W("100", three)), room = RingArtwork.InnerOpening(d);
+                check(widest <= room && RingArtwork.CenterFontSize("88", d) > d * .34f,
+                    $"ring numbers are larger and still fit inside the inner ring at {d} DIP ({widest:0.#}/{room:0.#} DIP, {RingArtwork.CenterFontSize("88", d):0.#} px)");
+            }
         }
+
+        // Row text tones: WCAG contrast against a typical dark (32,32,32) and light (243,243,243) taskbar.
+        double Lum(System.Drawing.Color c) { double L(int v) { double x = v / 255.0; return x <= .03928 ? x / 12.92 : Math.Pow((x + .055) / 1.055, 2.4); } return .2126 * L(c.R) + .7152 * L(c.G) + .0722 * L(c.B); }
+        double Contrast(System.Drawing.Color a, System.Drawing.Color b) { double x = Lum(a), y = Lum(b); return (Math.Max(x, y) + .05) / (Math.Min(x, y) + .05); }
+        var darkBar = System.Drawing.Color.FromArgb(32, 32, 32); var lightBar = System.Drawing.Color.FromArgb(243, 243, 243);
+        double worst = new[] { Contrast(RingArtwork.LabelTone(false), darkBar), Contrast(RingArtwork.TimeTone(false), darkBar), Contrast(RingArtwork.LabelTone(true), lightBar), Contrast(RingArtwork.TimeTone(true), lightBar) }.Min();
+        check(worst >= 9, $"labels and times are high-contrast text on dark and light taskbars, not a dim grey (lowest {worst:0.0}:1)");
 
         var open = new System.Drawing.Rectangle(0, 0, 2560, 72);
         var roomy = TaskbarHost.FindMeterSpace(open, new[] { new System.Drawing.Rectangle(0, 0, 300, 72) }, 2140, 1.5f, 66);
