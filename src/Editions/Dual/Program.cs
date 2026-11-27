@@ -25,6 +25,7 @@ public static class Program
         if (args.Contains("--install")) return Installation.Run();
         if (args.Contains("--verify-alerts")) return AlertVerification.Run(args);
         if (args.Contains("--verify-alert-probe")) return AlertVerification.Probe(args);
+        if (args.Contains("--verify-notification-display")) return NotificationProbe.Run(args);
         if (args.Contains("--verify-portability")) return PortabilityVerification.Run(args);
         if (args.Contains("--verify-taskbar-layout")) return TaskbarLayoutVerification.Run(args);
         if (args.Contains("--diagnose"))
@@ -174,7 +175,11 @@ public static class Verification
                     await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                     window.Capture(Path.Combine(folder, live ? "live-compact.png" : "compact.png"));
                     TrayArtwork.SavePreview(Path.Combine(folder, "tray-sizes.png"));
-                    Check(window.Compact.Visibility == Visibility.Visible && window.Expanded.Visibility == Visibility.Collapsed, "compact view switches correctly");
+                    string CellText(System.Windows.Controls.Panel? cell) => cell == null ? "" : string.Join(" ", FindText(cell));
+                    Check(window.DualCompact?.Visibility == Visibility.Visible && window.Compact.Visibility == Visibility.Collapsed && window.Expanded.Visibility == Visibility.Collapsed,
+                        "compact view switches to Dual's two-service layout, not the shared Codex-only one");
+                    Check(CellText(window.CompactCodex).Contains("Codex") && CellText(window.CompactCodex).Contains("주간") && CellText(window.CompactClaude).Contains("Claude"),
+                        $"compact view names each service and the window its number shows ({CellText(window.CompactCodex)} | {CellText(window.CompactClaude)})");
                     window.SetView(WindowView.Detail, false);
                     window.SetSnapshot(week, "테스트: 네트워크 연결 실패 · 마지막 확인값을 표시합니다.");
                     await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
@@ -208,6 +213,25 @@ public static class Verification
                     Check(SectionText(window.CodexSection).Contains("Codex") && SectionText(window.CodexSection).Contains("100%") && SectionText(window.CodexSection).Contains("92%"), $"Codex section lists both of its limits ({SectionText(window.CodexSection)})");
                     Check(SectionText(window.ClaudeSection).Contains("Claude") && SectionText(window.ClaudeSection).Contains("61%") && SectionText(window.ClaudeSection).Contains("82%"), $"Claude section lists both of its limits with equal weight ({SectionText(window.ClaudeSection)})");
                     Check(window.DetailUpdatedText?.Text.StartsWith("1분마다 갱신") == true && window.RefreshSeconds == 60, "Codex and Claude share one refresh interval, one minute by default");
+                    // An exhausted 5-hour Codex window: weekly shown, service unusable until the 5-hour reset.
+                    window.SetSnapshot(balanced with { Windows = new[] { balanced.Windows[0] with { Used = 100 }, balanced.Windows[1] } });
+                    await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+                    window.Capture(Path.Combine(folder, "detail-five-hour-exhausted.png"));
+                    Check(SectionText(window.CodexSection).Contains("사용 불가") && SectionText(window.CodexSection).Contains("소진") && !SectionText(window.ClaudeSection).Contains("사용 불가"),
+                        $"an exhausted window marks only its own service unusable in the detail view ({SectionText(window.CodexSection)})");
+                    window.SetView(WindowView.Compact, false);
+                    await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+                    window.Capture(Path.Combine(folder, "compact-dual.png"));
+                    Check(CellText(window.CompactCodex).Contains("사용 불가") && CellText(window.CompactCodex).Contains("후 재개") &&
+                        CellText(window.CompactClaude).Contains("5시간") && CellText(window.CompactClaude).Contains("후 리셋") && !CellText(window.CompactClaude).Contains("사용 불가"),
+                        $"compact view follows the 5-hour-first rule and the unusable state per service ({CellText(window.CompactCodex)} | {CellText(window.CompactClaude)})");
+                    window.SetView(WindowView.Detail, false);
+                    window.SetSnapshot(balanced with { Windows = new[] { balanced.Windows[1] } });
+                    await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+                    window.Capture(Path.Combine(folder, "detail-no-five-hour.png"));
+                    Check(SectionText(window.CodexSection).Contains("없음") && SectionText(window.CodexSection).Contains("주간 한도만 있음") && !SectionText(window.CodexSection).Contains("사용 불가"),
+                        $"an account without a 5-hour limit says so and stays usable ({SectionText(window.CodexSection)})");
+                    window.SetSnapshot(balanced);
                     window.SetClaude(null);
                     await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                     window.Capture(Path.Combine(folder, "detail-no-claude.png"));

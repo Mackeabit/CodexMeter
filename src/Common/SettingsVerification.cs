@@ -50,10 +50,14 @@ internal static class SettingsVerification
             var trayViews = FindTray(FindTray(trayMenu.Items.Cast<Forms.ToolStripMenuItem>(), "별도 창 설정").DropDownItems.Cast<Forms.ToolStripMenuItem>(), "표시 방식");
             FindTray(trayViews.DropDownItems.Cast<Forms.ToolStripMenuItem>(), title).PerformClick();
             bool visible = expected switch {
+#if DUAL
+                // Dual replaces the shared compact and detail layouts with its own two-service views.
+                WindowView.Compact => window.DualCompact?.Visibility == Visibility.Visible && window.Compact.Visibility == Visibility.Collapsed,
+#else
                 WindowView.Compact => window.Compact.Visibility == Visibility.Visible,
+#endif
                 WindowView.Segmented => window.SegmentRows.Visibility == Visibility.Visible,
 #if DUAL
-                // Dual replaces the shared detail layout with its own two-service view.
                 _ => window.DetailPanel?.Visibility == Visibility.Visible
 #else
                 _ => window.Expanded.Visibility == Visibility.Visible

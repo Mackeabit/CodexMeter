@@ -141,10 +141,29 @@ internal sealed class TaskbarHost : Forms.NativeWindow, IDisposable
         var p = position.Value;
         TaskbarNative.SetWindowPos(Handle, IntPtr.Zero, p.X, p.Y, p.Width, p.Height, 0x0010 | 0x0040);
         Present(p.Width, p.Height);
-        Status = p.Width < width ? "표시 중 · 공간이 좁아 리셋 안내 생략" : "표시 중";
+        Status = p.Width >= (int)Math.Round(RingArtwork.WideWidth * scale) ? "표시 중"
+            : p.Width >= (int)Math.Round(RingArtwork.MediumWidth * scale) ? "표시 중 · 공간이 좁아 리셋 시간은 툴팁에 표시"
+            : p.Width < width ? "표시 중 · 공간이 좁아 리셋 안내 생략" : "표시 중 · 공간이 좁아 간단히 표시";
     }
-    internal static Rectangle? FindMeterSpace(Rectangle area, Rectangle[]? obstacles, int right, float scale, int height) =>
-        FindResponsiveSpace(area, obstacles, right, (int)Math.Round(RingArtwork.PreferredWidth * scale), (int)Math.Ceiling(RingArtwork.MinimumWidth * scale), height, (int)(6 * scale));
+    // The meter stays in the free gap nearest the notification area (where it has always been) and takes the richest
+    // layout that fits that gap: rows with countdown, rows without countdown, the short token, then rings only.
+    // It never jumps to a wider gap elsewhere on the taskbar just to get a wider layout.
+    internal static Rectangle? FindMeterSpace(Rectangle area, Rectangle[]? obstacles, int right, float scale, int height)
+    {
+        int gap = (int)(6 * scale);
+        int minimum = (int)Math.Ceiling(RingArtwork.MinimumWidth * scale);
+        if (FindSpace(area, obstacles, right, minimum, height, gap) is not Rectangle anchor) return null;
+        // Left edge of that gap: the nearest obstacle to the left (plus spacing) or the taskbar start.
+        int left = obstacles!.Where(r => r.Top < anchor.Bottom && anchor.Top < r.Bottom && r.Right + gap <= anchor.Left)
+            .Select(r => r.Right + gap).DefaultIfEmpty(gap).Max();
+        int available = anchor.Right - left;
+        bool tall = height + .01f >= RingArtwork.WideMinimumHeight * scale;
+        int Scaled(int dip) => (int)Math.Round(dip * scale);
+        int width = tall && available >= Scaled(RingArtwork.WideWidth) ? Scaled(RingArtwork.WideWidth)
+            : tall && available >= Scaled(RingArtwork.MediumWidth) ? Scaled(RingArtwork.MediumWidth)
+            : Math.Clamp(available, minimum, Scaled(RingArtwork.PreferredWidth));
+        return new Rectangle(anchor.Right - width, anchor.Top, width, anchor.Height);
+    }
     internal static Rectangle? FindSpace(Rectangle area, Rectangle[]? obstacles, int right, int width, int height, int gap)
     {
         right = Math.Min(right, area.Right - gap);
@@ -185,23 +204,28 @@ internal sealed class TaskbarHost : Forms.NativeWindow, IDisposable
         var codexWeek = Pick(codexRows, 10080);
         bool codexWarning = codex?.Allowed == false || (codexStale && codex == null);
         var known = claude?.Known(now) ?? Array.Empty<Quota>();
+        // "No 5-hour limit" only when Codex answered without that window (observed for a prolite account: primary =
+        // weekly, secondary = null). Claude Pro/Max always have one, and a Claude reading can legitimately carry a single
+        // window (older event shape), so a missing Claude 5-hour value always stays unknown.
+        bool codexNoFive = codexRows.Length > 0 && codexFive == null;
         return new[]
         {
-            new RingService("Codex", RingService.CodexAccent, codexFive, codexWeek, codexStale, codexWarning),
-            new RingService("Claude", RingService.ClaudeAccent, Pick(known.ToArray(), 300), Pick(known.ToArray(), 10080), claudeStale ?? claude?.IsStale(now) == true, false),
+            new RingService("Codex", RingService.CodexAccent, codexFive, codexWeek, codexStale, codexWarning, codexNoFive, now),
+            new RingService("Claude", RingService.ClaudeAccent, Pick(known.ToArray(), 300), Pick(known.ToArray(), 10080), claudeStale ?? claude?.IsStale(now) == true, false, false, now),
         };
     }
     internal static string HoverText(Snapshot? codex, bool codexStale, ClaudeReading? claude, DateTimeOffset now, bool? claudeStale = null)
     {
-        string Block(string name, Quota? five, Quota? week, bool old, bool denied, string? note) =>
-            name + (note == null ? "" : " · " + note) + "\n" +
-            string.Join("\n", new[] { ("5시간", five), ("주간", week) }.Where(p => p.Item2 != null).Select(p => p.Item1 + " · " + UsageHover.Describe(p.Item2, old, denied, now).Replace("\n", " · ")))
-            + (five == null && week == null ? "사용량 미확인" : "");
+        string Block(RingService s, bool old, bool denied, string? note) =>
+            s.Short + (note == null ? "" : " · " + note) + (s.Blocking is Quota b ? $" · 사용 불가 ({RingArtwork.ShortCountdown(b, now)} 후 재개)" : "") + "\n" +
+            string.Join("\n", new[] { ("5시간", s.FiveHour), ("주간", s.Weekly) }.Where(p => p.Item2 != null).Select(p => (s.IsShown(p.Item2) ? "• " : "") + p.Item1 + " · " + UsageHover.Describe(p.Item2, old, denied, now).Replace("\n", " · ")))
+            + (s.NoFiveHour ? "\n5시간 · 없음 (주간 한도만 있음)" : "")
+            + (s.FiveHour == null && s.Weekly == null ? "사용량 미확인" : "");
         var services = Services(codex, codexStale, claude, now, claudeStale);
         string claudeNote = claude == null ? "Claude Code 사용 후 표시" : $"{claude.Updated.ToLocalTime():HH:mm} 기준";
         return "Codex Meter · 다음 리셋 (PC 현지시간)\n\n" +
-            Block("Codex", services[0].FiveHour, services[0].Weekly, codexStale, codex?.Allowed == false, null) + "\n\n" +
-            Block("Claude", services[1].FiveHour, services[1].Weekly, services[1].Stale, false, claudeNote);
+            Block(services[0], codexStale, codex?.Allowed == false, null) + "\n\n" +
+            Block(services[1], services[1].Stale, false, claudeNote);
     }
     private Bitmap Render(int width, int height) =>
         RingArtwork.Render(width, height, scale, Services(snapshot, stale, claude, DateTimeOffset.Now, claudeStale), TrayArtwork.IsLightTaskbar(), DateTimeOffset.Now, pointerInside);

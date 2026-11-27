@@ -157,6 +157,8 @@ public partial class MainWindow : Window
         nextPoll = DateTimeOffset.MinValue;
     }
     private string AlertPauseTitle => alerts.AnyMuted(snapshot) ? "알림 다시 켜기" : "다음 리셋까지 알림 끄기";
+    private bool AlertQuotasKnown => alerts.HasQuotas(snapshot);
+    private string? AlertStorageWarning => alerts.StorageWarning;
     private void ToggleAlertPause()
     {
         alerts.SetMuted(snapshot, DateTimeOffset.Now, !alerts.AnyMuted(snapshot));

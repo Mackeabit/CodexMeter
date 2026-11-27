@@ -6,6 +6,149 @@ namespace CodexMeter;
 
 internal static class DesignVerification
 {
+    // Wide taskbar layout: two rows (5h, 주) beside each ring, the shown row tinted.
+    private static void WideChecks(string folder, DateTimeOffset now, Quota week, Quota first, Snapshot codex, ClaudeReading claude, Action<bool, string> check)
+    {
+        var real = codex with { Windows = new[] { week with { Used = 10 } } };   // shape observed live: Codex weekly only
+        var claudeReal = claude with { Windows = new[] { claude.Windows[0] with { Used = 23 }, claude.Windows[1] with { Used = 27 } } };
+        foreach (float scale in new[] { 1f, 1.25f, 1.5f, 2f })
+            TaskbarHost.SavePreview(Path.Combine(folder, $"wide-{(int)(scale * 100)}.png"), real, claudeReal, false, scale, RingArtwork.WideWidth, false, now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "wide-light.png"), real, claudeReal, false, 1.5f, RingArtwork.WideWidth, true, now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "wide-both-windows.png"), codex, claude, false, 1.5f, RingArtwork.WideWidth, false, now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "wide-five-hour-exhausted.png"), codex with { Windows = new[] { first with { Used = 100 }, week with { Used = 40 } } }, claude, false, 1.5f, RingArtwork.WideWidth, false, now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "wide-weekly-exhausted.png"), codex with { Windows = new[] { first with { Used = 10 }, week with { Used = 100 } } }, claude, false, 1.5f, RingArtwork.WideWidth, false, now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "wide-stale.png"), codex, claude with { Updated = now.AddHours(-2) }, true, 1.5f, RingArtwork.WideWidth, false, now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "wide-unknown.png"), null, null, false, 1.5f, RingArtwork.WideWidth, false, now);
+
+        // The shown row carries the tint; the other row stays clear. Service 0 rows start at Pad + RingCell + RowGap.
+        var services = TaskbarHost.Services(codex, false, claude, now);
+        using (var image = RingArtwork.Render(RingArtwork.WideWidth, 44, 1, services, false, now))
+        {
+            int x = RingArtwork.Pad + RingArtwork.RingCell + RingArtwork.RowGap + 6;
+            int fiveTop = 22 - RingArtwork.RowHeight - 1 + 2, weekTop = 22 + 1 + 2;
+            check(image.GetPixel(x, fiveTop).A > 30 && image.GetPixel(x, weekTop).A <= 2, "wide layout tints the 5-hour row, which the center number shows");
+        }
+        var weeklyShown = TaskbarHost.Services(real, false, claude, now);
+        using (var image = RingArtwork.Render(RingArtwork.WideWidth, 44, 1, weeklyShown, false, now))
+        {
+            int x = RingArtwork.Pad + RingArtwork.RingCell + RingArtwork.RowGap + 6;
+            check(image.GetPixel(x, 22 + 1 + 2).A > 30 && image.GetPixel(x, 22 - RingArtwork.RowHeight - 1 + 2).A <= 2,
+                "with only a weekly value, the 주 row is the tinted one");
+        }
+        check(RingArtwork.RowText(weeklyShown[0], null, true, now) == ("5h", "없음", "") && RingArtwork.RowText(weeklyShown[0], weeklyShown[0].Weekly, false, now).Value == "90%",
+            "wide rows say 없음 for an account without a 5-hour window and list the weekly value");
+        check(RingArtwork.RowText(services[1], null, true, now).Value == "—", "an unknown row shows a dash");
+
+        using (var probe = new System.Drawing.Bitmap(10, 10))
+        using (var g = System.Drawing.Graphics.FromImage(probe))
+        using (var label = RingArtwork.Font(RingArtwork.TokenFont, 11))
+        using (var value = RingArtwork.Font(RingArtwork.NumberFont, 12))
+        {
+            var fmt = System.Drawing.StringFormat.GenericTypographic;
+            float W(string t, System.Drawing.Font f) => g.MeasureString(t, f, System.Drawing.PointF.Empty, fmt).Width;
+            float labelMax = new[] { "5h", "주" }.Max(t => W(t, label));
+            float valueMax = Math.Max(W("100%", value), W("없음", label));
+            float timeMax = new[] { "6일", "23:59", "59분", "확인", "—" }.Max(t => W(t, label));
+            check(labelMax <= RingArtwork.RowLabelWidth && valueMax <= RingArtwork.RowValueRight - RingArtwork.RowLabelX - RingArtwork.RowLabelWidth && timeMax <= RingArtwork.RowTimeWidth,
+                $"wide row text fits its columns (label {labelMax:0.#}/{RingArtwork.RowLabelWidth}, value {valueMax:0.#}, time {timeMax:0.#}/{RingArtwork.RowTimeWidth:0.#} DIP)");
+            using var smallValue = RingArtwork.Font(RingArtwork.NumberFont, 10.5f);
+            float mediumValueRoom = RingArtwork.MediumRowWidth - 1 - RingArtwork.MediumLabelX - RingArtwork.MediumLabelWidth;
+            float mediumValueMax = new[] { W("99%", value), W("100%", smallValue), W("없음", label) }.Max();
+            check(labelMax <= RingArtwork.MediumLabelWidth && mediumValueMax <= mediumValueRoom,
+                $"medium row text fits its packed columns (label {labelMax:0.#}/{RingArtwork.MediumLabelWidth}, value {mediumValueMax:0.#}/{mediumValueRoom:0.#} DIP)");
+        }
+
+        var open = new System.Drawing.Rectangle(0, 0, 2560, 72);
+        var roomy = TaskbarHost.FindMeterSpace(open, new[] { new System.Drawing.Rectangle(0, 0, 300, 72) }, 2140, 1.5f, 66);
+        check(roomy?.Width == (int)Math.Round(RingArtwork.WideWidth * 1.5f), "a roomy taskbar gets the wide layout");
+        var tight = TaskbarHost.FindMeterSpace(open, new[] { new System.Drawing.Rectangle(0, 0, 237, 72), new System.Drawing.Rectangle(560, 0, 2000, 72) }, 2140, 1.5f, 66);
+        check(tight != null && tight.Value.Width < RingArtwork.WideWidth * 1.5f, "a gap too small for the wide layout falls back to the shorter one");
+        // The case seen live: a wide free stretch far left, a smaller gap next to the tray. The meter stays by the tray.
+        // Start button area 0..300, free 300..900 (wide enough for anything), app buttons 900..(tray - gap px).
+        var start = new System.Drawing.Rectangle(0, 0, 300, 72);
+        int Gap(int px) => 2140 - px;   // left edge of a free gap of px pixels ending at the tray edge
+        var byTray = TaskbarHost.FindMeterSpace(open, new[] { start, new System.Drawing.Rectangle(900, 0, Gap(360) - 900, 72) }, 2140, 1.5f, 66);
+        check(byTray?.Right > Gap(360) && byTray.Value.Width == (int)Math.Round(RingArtwork.MediumWidth * 1.5f),
+            $"a gap by the tray too small for the wide layout keeps the meter there with rows but no countdown ({byTray})");
+        var smallByTray = TaskbarHost.FindMeterSpace(open, new[] { start, new System.Drawing.Rectangle(900, 0, Gap(250) - 900, 72) }, 2140, 1.5f, 66);
+        check(smallByTray?.Right > Gap(250) && smallByTray.Value.Width < RingArtwork.MediumWidth * 1.5f,
+            $"a smaller gap by the tray keeps the meter there with the short layout instead of jumping left ({smallByTray})");
+        // Measured live (2560x72 taskbar at 150%): last app button ends at 1845, notification area starts at 2143.
+        var observed = new[] { new System.Drawing.Rectangle(715, 0, 1845 - 715, 72), new System.Drawing.Rectangle(2143, 0, 417, 72) };
+        var live = TaskbarHost.FindMeterSpace(new System.Drawing.Rectangle(0, 0, 2560, 72), observed, 2143 - 9, 1.5f, 66);
+        check(live?.Width == (int)Math.Round(RingArtwork.MediumWidth * 1.5f) && live.Value.Left >= 1845,
+            $"the gap measured beside the tray on this PC gets the medium rows ({live})");
+        foreach (float scale in new[] { 1f, 1.5f })
+            TaskbarHost.SavePreview(Path.Combine(folder, $"medium-{(int)(scale * 100)}.png"), real, claudeReal, false, scale, RingArtwork.MediumWidth, false, now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "medium-light.png"), real, claudeReal, false, 1.5f, RingArtwork.MediumWidth, true, now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "medium-five-hour-exhausted.png"), codex with { Windows = new[] { first with { Used = 100 }, week with { Used = 40 } } }, claude, false, 1.5f, RingArtwork.MediumWidth, false, now);
+        var shortBar = TaskbarHost.FindMeterSpace(open, new[] { new System.Drawing.Rectangle(0, 0, 300, 72) }, 2140, 1.5f, (int)(32 * 1.5f));
+        check(shortBar != null && shortBar.Value.Width < RingArtwork.WideWidth * 1.5f, "a small-icon taskbar keeps the short layout because two rows would not fit its height");
+    }
+
+    // The five states agreed for the center number: normal, no 5-hour plan, weekly low, 5-hour exhausted, weekly exhausted.
+    private static void StateChecks(string folder, DateTimeOffset now, Quota week, Quota first, Snapshot codex, ClaudeReading claude, Action<bool, string> check)
+    {
+        RingService Codex(params Quota[] windows) => TaskbarHost.Services(codex with { Windows = windows }, false, claude, now)[0];
+
+        var noFive = Codex(week);
+        check(noFive.NoFiveHour && noFive.Shown == noFive.Weekly && noFive.Center == "37" && !noFive.Blocked,
+            "a plan without a 5-hour limit shows its weekly value and stays usable");
+        var unknownFive = TaskbarHost.Services(codex, false, claude with { Windows = new[] { claude.Windows[0] with { Reset = now.AddMinutes(-1) }, claude.Windows[1] } }, now)[1];
+        check(!unknownFive.NoFiveHour && unknownFive.FiveHour == null && unknownFive.Center == "46",
+            "a 5-hour value that is only unknown (reset passed) is not mistaken for a plan without that limit");
+
+        var weeklyLow = Codex(first with { Used = 10 }, week with { Used = 88 });
+        check(weeklyLow.Center == "90" && !weeklyLow.Alert && !weeklyLow.Blocked, "a low weekly value does not take over the center while the 5-hour window has room");
+
+        var fiveGone = Codex(first with { Used = 100 }, week with { Used = 40 });
+        var fiveToken = RingArtwork.Token(fiveGone, fiveGone.Shown!, now);
+        check(fiveGone.Shown == fiveGone.Weekly && fiveGone.Center == "60" && fiveGone.Blocked && fiveGone.Alert && fiveGone.Blocking == fiveGone.FiveHour &&
+            fiveToken.Top == RingArtwork.BlockedToken && fiveToken.Bottom == RingArtwork.ShortCountdown(first, now),
+            "an exhausted 5-hour window shows the weekly value, marks the service unusable and counts down to the 5-hour reset");
+
+        var weekGone = Codex(first with { Used = 10 }, week with { Used = 100 });
+        check(weekGone.Center == "90" && weekGone.Blocked && weekGone.Blocking == weekGone.Weekly && RingArtwork.Token(weekGone, weekGone.Shown!, now).Bottom == "1일",
+            "an exhausted weekly window marks the service unusable until the weekly reset while the center keeps the 5-hour value");
+
+        var bothGone = Codex(first with { Used = 100 }, week with { Used = 100 });
+        check(bothGone.Blocking == bothGone.Weekly, "with both windows exhausted, use resumes at the later reset");
+        check(!(Codex(first, week) with { Warning = true }).Blocked, "a server denial keeps its own warning instead of the blocked state");
+        var blockedPair = TaskbarHost.Services(codex with { Windows = new[] { first with { Used = 100 }, week } }, false, claude, now);
+        var blockedStale = TaskbarHost.Services(codex with { Windows = new[] { first with { Used = 100 }, week } }, true, claude, now);
+        check(MainWindow.TrayBlocked(blockedPair) && !MainWindow.TrayBlocked(TaskbarHost.Services(codex, false, claude, now)) && !MainWindow.TrayBlocked(blockedStale),
+            "the tray marks a fresh unusable service, not a normal or outdated one");
+        using (var trayRed = TrayArtwork.Render("60", 32, false, RingArtwork.Low))
+        using (var trayPlain = TrayArtwork.Render("60", 32, false))
+        {
+            int Red(System.Drawing.Bitmap b) => Enumerable.Range(0, 32).Sum(x => Enumerable.Range(0, 32).Count(y => b.GetPixel(x, y) is { A: > 200, R: > 180, G: < 100, B: < 100 }));
+            check(Red(trayRed) > 20 && Red(trayPlain) == 0, "the tray number turns red while a service is unusable and stays white otherwise");
+        }
+        var resetPassed = Codex(first with { Used = 100, Reset = now.AddMinutes(-1) }, week with { Used = 40 });
+        check(!resetPassed.Blocked && resetPassed.Center == "60",
+            "an exhausted 5-hour window whose reset time has passed no longer marks the service unusable (offline or before the next refresh)");
+        var claudeWeeklyOnly = TaskbarHost.Services(codex, false, claude with { Windows = new[] { claude.Windows[1] } }, now)[1];
+        check(!claudeWeeklyOnly.NoFiveHour && claudeWeeklyOnly.Center == "46",
+            "a Claude reading with only a weekly window keeps 5-hour unknown instead of claiming the account has none");
+
+        // Geometry: the inner (5-hour) track disappears for a plan without that limit.
+        int InnerPixels(RingService s)
+        {
+            using var image = RingArtwork.Render(RingArtwork.PreferredWidth, 44, 1, new[] { s, s }, false, now);
+            // A point on the inner ring's left edge, between the center digits and the outer ring.
+            // At 1x: center (22, 22), outer stroke x 4..7.6, inner stroke x 9.9..13, digits start near x 15.
+            return Enumerable.Range(10, 3).Sum(x => Enumerable.Range(20, 4).Count(y => image.GetPixel(x, y).A > 40));
+        }
+        check(InnerPixels(Codex(first, week)) > 0 && InnerPixels(noFive) == 0, "a plan without a 5-hour limit draws no inner ring");
+
+        TaskbarHost.SavePreview(Path.Combine(folder, "rings-five-hour-exhausted.png"), codex with { Windows = new[] { first with { Used = 100 }, week with { Used = 40 } } }, claude, false, 1.5f, light: false, now: now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "rings-weekly-exhausted.png"), codex with { Windows = new[] { first with { Used = 10 }, week with { Used = 100 } } }, claude, false, 1.5f, light: false, now: now);
+        TaskbarHost.SavePreview(Path.Combine(folder, "rings-no-five-hour.png"), codex with { Windows = new[] { week } }, claude, false, 1.5f, light: false, now: now);
+        string hover = TaskbarHost.HoverText(codex with { Windows = new[] { first with { Used = 100 }, week } }, false, claude, now);
+        check(hover.Contains("사용 불가") && hover.Contains("• 주간"), $"hover text marks the shown window and the unusable state ({hover.Replace("\n", " / ")})");
+        check(TaskbarHost.HoverText(codex with { Windows = new[] { week } }, false, claude, now).Contains("주간 한도만 있음"), "hover text says this account has no 5-hour limit");
+    }
+
     internal static void Run(string folder, Action<bool, string> check)
     {
         var now = DateTimeOffset.Now;
@@ -38,18 +181,23 @@ internal static class DesignVerification
             check(hovered.GetPixel(RingArtwork.PreferredWidth - 3, 22).A > corner.A, "pointer hover adds a visible wash");
         }
         check(RingArtwork.Font(RingArtwork.NumberFont, 12).Name is RingArtwork.NumberFont or "Segoe UI", "ring numbers use Segoe UI Variable when installed, else Segoe UI");
-        check(services[0].Center == "37" && services[1].Center == "46", "ring centers show the lower remaining value per service");
-        check(services[0].Lowest?.Minutes == 10080 && services[1].Lowest?.Minutes == 10080 && RingArtwork.WindowName(services[0].Lowest!) == "주", "each reset token names the lowest window of its own service");
+        check(services[0].Center == "63" && services[1].Center == "88", "ring centers show the 5-hour value first, even when the weekly value is lower");
+        check(services.All(s => s.Shown?.Minutes == 300 && !s.Blocked) && RingArtwork.Token(services[0], services[0].Shown!, now).Top == "5h", "each reset token names the window the center number shows");
+        StateChecks(folder, now, week, first, codex, claude, check);
+        WideChecks(folder, now, week, first, codex, claude, check);
         var low = TaskbarHost.Services(codex with { Windows = new[] { first with { Used = 92 }, week } }, false, claude, now);
         using (var image = RingArtwork.Render(RingArtwork.PreferredWidth, 44, 1, low, false, now))
         {
-            int red = Enumerable.Range(0, 46).Sum(x => Enumerable.Range(0, 44).Count(y => image.GetPixel(x, y).ToArgb() == RingArtwork.Low.ToArgb()));
+            // The 5-hour ring is the lighter inner ring, so look for red-toned pixels (coral has G 128) rather than one exact value.
+            int red = Enumerable.Range(0, 46).Sum(x => Enumerable.Range(0, 44).Count(y => image.GetPixel(x, y) is { A: > 100, R: > 180, G: < 100, B: < 100 }));
             check(red > 20, "a window under 20% turns its ring red");
         }
         using (var image = RingArtwork.Render(RingArtwork.PreferredWidth, 44, 1, services, false, now))
         {
-            int purple = Enumerable.Range(46, 46).Sum(x => Enumerable.Range(0, 44).Count(y => image.GetPixel(x, y).ToArgb() == RingService.ClaudeAccent.ToArgb()));
-            int coral = Enumerable.Range(0, 46).Sum(x => Enumerable.Range(0, 44).Count(y => image.GetPixel(x, y).ToArgb() == RingService.CodexAccent.ToArgb()));
+            // Each service's slot: [ring][gap][token] then the service gap; Claude starts at the second slot.
+            int slot = RingArtwork.Pad + RingArtwork.RingCell + RingArtwork.TokenGap + RingArtwork.TokenWidth + RingArtwork.ServiceGap;
+            int purple = Enumerable.Range(slot, RingArtwork.PreferredWidth - slot).Sum(x => Enumerable.Range(0, 44).Count(y => image.GetPixel(x, y).ToArgb() == RingService.ClaudeAccent.ToArgb()));
+            int coral = Enumerable.Range(0, slot).Sum(x => Enumerable.Range(0, 44).Count(y => image.GetPixel(x, y).ToArgb() == RingService.CodexAccent.ToArgb()));
             check(purple > 20 && coral > 20, "Codex and Claude rings use their own colors");
         }
         var unknown = TaskbarHost.Services(null, false, null, now);
@@ -66,7 +214,7 @@ internal static class DesignVerification
         {
             var fmt = System.Drawing.StringFormat.GenericTypographic;
             float widest = new[] { "6일", "23:59", "59분", "확인", "—" }.Max(t => g.MeasureString(t, bottom, System.Drawing.PointF.Empty, fmt).Width);
-            widest = Math.Max(widest, new[] { "5h", "주" }.Max(t => g.MeasureString(t, top, System.Drawing.PointF.Empty, fmt).Width));
+            widest = Math.Max(widest, new[] { "5h", "주", RingArtwork.BlockedToken }.Max(t => g.MeasureString(t, top, System.Drawing.PointF.Empty, fmt).Width));
             check(widest <= RingArtwork.TokenWidth, $"longest reset token ({widest:0.#} DIP) fits beside its ring ({RingArtwork.TokenWidth} DIP)");
         }
         var area = new System.Drawing.Rectangle(0, 0, 2560, 72);
@@ -79,6 +227,57 @@ internal static class DesignVerification
 
 internal static class ClaudeVerification
 {
+    // Claude low-usage alerts reuse the Codex 20%/5% policy with a separate history file.
+    private static void AlertChecks(string folder, DateTimeOffset now, Action<bool, string> check)
+    {
+        string dir = Path.Combine(folder, "claude-alerts-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        ClaudeReading R(DateTimeOffset updated, double fiveHourLeft, double weeklyLeft) => new(new[] {
+            new Quota(ClaudeReading.Bucket, "Claude", 100 - fiveHourLeft, 300, now.AddHours(2)),
+            new Quota(ClaudeReading.Bucket, "Claude", 100 - weeklyLeft, 10080, now.AddDays(3)) }, updated, "poll");
+        UsageNotification? Observe(UsageAlerts p, ClaudeReading r) => p.Observe(r.AlertSnapshot(), now, true, 135);
+
+        var claude = new UsageAlerts(Path.Combine(dir, "claude.json"), "Claude");
+        check(Observe(claude, R(now, 25, 60)) == null, "Claude above 20 percent does not warn");
+        var first = Observe(claude, R(now, 19, 60));
+        check(first is { Critical: false, Warnings.Count: 1 } && first.Title == "Claude 잔여량 20% 미만" && first.Text.Contains("5시간 19%"),
+            $"Claude below 20 percent warns once with a Claude title ({first?.Title})");
+        check(Observe(claude, R(now, 18, 60)) == null && Observe(new UsageAlerts(Path.Combine(dir, "claude.json"), "Claude"), R(now, 17, 60)) == null,
+            "repeated Claude readings and a restart do not repeat the warning");
+        var critical = Observe(claude, R(now, 4, 60));
+        check(critical is { Critical: true } && critical.Title == "Claude 잔여량 5% 미만", "Claude below 5 percent warns once more as critical");
+
+        var stale = new UsageAlerts(Path.Combine(dir, "stale.json"), "Claude");
+        check(Observe(stale, R(now.AddMinutes(-10), 3, 3)) == null && Observe(stale, R(now, 3, 3)) is { Warnings.Count: 2 },
+            "an old Claude report (file left from earlier) neither warns nor consumes the first fresh warning");
+        var expired = R(now, 2, 60) with { Windows = new[] { new Quota(ClaudeReading.Bucket, "Claude", 98, 300, now.AddMinutes(-1)) } };
+        check(Observe(new UsageAlerts(Path.Combine(dir, "expired.json"), "Claude"), expired) == null,
+            "a Claude window whose reset already passed does not warn on its old value");
+
+        var codex = new UsageAlerts(Path.Combine(dir, "codex.json"));
+        var codexLow = new Snapshot(new[] { new Quota("codex", "Codex", 81, 300, now.AddHours(2)) }, "pro", null, true, "account", now);
+        var codexWarning = codex.Observe(codexLow, now, true, 135);
+        var separate = new UsageAlerts(Path.Combine(dir, "separate.json"), "Claude");
+        check(codexWarning?.Title == "Codex 잔여량 20% 미만" && Observe(separate, R(now, 19, 60)) != null,
+            "Codex and Claude keep separate histories; one service's warning never silences the other");
+
+        var muted = new UsageAlerts(Path.Combine(dir, "muted.json"), "Claude");
+        check(muted.SetMuted(R(now, 30, 60).AlertSnapshot(), now, true) && muted.AnyMuted(R(now, 30, 60).AlertSnapshot()) &&
+            Observe(muted, R(now, 3, 60)) == null, "pausing alerts until the next reset also silences Claude");
+        check(ClaudeUsage.AlertsPath != UsageAlerts.DefaultPath && ClaudeUsage.AlertsPath.EndsWith("notifications-claude-v1.json"),
+            "Claude alert history lives in its own file next to the Codex history");
+
+        // Notices held while Windows does not accept notifications (Do Not Disturb reports "busy").
+        var queue = new NoticeQueue();
+        var claude20 = Observe(new UsageAlerts(null, "Claude"), R(now, 19, 60))!;
+        var claude5 = Observe(new UsageAlerts(null, "Claude"), R(now, 3, 60))!;
+        queue.Add(codexWarning!, now); queue.Add(claude20, now.AddSeconds(1)); queue.Add(claude5, now.AddSeconds(2));
+        check(queue.Count == 2 && queue.Next(now)?.Service == "Codex" && queue.Next(now)?.Title == "Claude 잔여량 5% 미만" && queue.Next(now) == null,
+            "held notices keep one per service in arrival order, and a newer Claude notice replaces the older one");
+        queue.Add(claude20, now);
+        check(queue.Next(now + NoticeQueue.MaxAge + TimeSpan.FromMinutes(1)) == null, "a notice held longer than six hours is dropped instead of shown late");
+    }
+
     internal static void Run(string folder, Action<bool, string> check)
     {
         var now = DateTimeOffset.FromUnixTimeSeconds(1800000000);
@@ -98,6 +297,7 @@ internal static class ClaudeVerification
         output = new StringWriter();
         ClaudeUsage.RunStatusLine(new StringReader("not json"), output, path);
         check(output.ToString().Length > 0 && ClaudeUsage.Deserialize(File.ReadAllText(path))?.FiveHour?.Remaining == 60, "malformed input never breaks Claude Code or erases the last value");
+        AlertChecks(folder, now, check);
         // Shape observed from Claude Code 2.1.332 stream-json (utilization is a 0..1 fraction).
         var stream = new[]
         {

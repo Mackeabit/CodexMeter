@@ -36,7 +36,8 @@ public static class TrayArtwork
         try { using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"); return key?.GetValue("SystemUsesLightTheme") is int value && value == 1; }
         catch { return false; }
     }
-    public static Bitmap Render(string text, int size, bool light)
+    // fill: optional ink color (Dual uses red while a service cannot be used); null keeps the standard contrast ink.
+    public static Bitmap Render(string text, int size, bool light, Color? fill = null)
     {
         var bitmap = new Bitmap(size, size);
         using var g = Graphics.FromImage(bitmap);
@@ -53,7 +54,7 @@ public static class TrayArtwork
         using var transform = new Matrix(scale, 0, 0, scale, (size - box.Width * scale) / 2 - box.Left * scale, (size - box.Height * scale) / 2 - box.Top * scale);
         path.Transform(transform);
         using var edge = new Pen(light ? Color.FromArgb(160,255,255,255) : Color.FromArgb(160,0,0,0), Math.Max(.6f, size / 40f)) { LineJoin = LineJoin.Round };
-        using var ink = new SolidBrush(light ? Color.FromArgb(18,18,18) : Color.White);
+        using var ink = new SolidBrush(fill ?? (light ? Color.FromArgb(18,18,18) : Color.White));
         g.DrawPath(edge, path); g.FillPath(ink, path);
         return bitmap;
     }

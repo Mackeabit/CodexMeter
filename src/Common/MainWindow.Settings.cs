@@ -50,8 +50,8 @@ public partial class MainWindow
         var notifications = new List<SettingsEntry> {
             new("잔여량 20%·5% 알림", ToggleAlerts, prefs.Alerts)
         };
-        if (prefs.Alerts) notifications.Add(new(AlertPauseTitle, ToggleAlertPause, Enabled: alerts.HasQuotas(snapshot)));
-        if (alerts.StorageWarning != null) notifications.Add(new(alerts.StorageWarning, Enabled: false));
+        if (prefs.Alerts) notifications.Add(new(AlertPauseTitle, ToggleAlertPause, Enabled: AlertQuotasKnown));
+        if (AlertStorageWarning is string storageWarning) notifications.Add(new(storageWarning, Enabled: false));
 
         var intervals = new List<SettingsEntry>();
         foreach (int seconds in new[] { 60, 120, 300 })

@@ -38,6 +38,7 @@ public partial class MainWindow : Window
     private string? error;
     private DateTimeOffset nextPoll = DateTimeOffset.MinValue;
     private readonly UsageAlerts alerts;
+    private readonly UsageAlerts claudeAlerts;
     private Preferences prefs = new();
     private readonly string settingsFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexMeter", "settings.json");
     private static Brush Brush(string color) => new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
@@ -45,6 +46,7 @@ public partial class MainWindow : Window
     {
         this.testing = testing;
         alerts = new UsageAlerts(testing ? null : UsageAlerts.DefaultPath);
+        claudeAlerts = new UsageAlerts(testing ? null : ClaudeUsage.AlertsPath, "Claude");
         InitializeComponent();
         if (!testing) try { if (File.Exists(settingsFile)) prefs = JsonSerializer.Deserialize<Preferences>(File.ReadAllText(settingsFile)) ?? new(); } catch { }
         // Dual refreshes Codex and Claude together; a first run starts at one minute. Saved choices are kept.
@@ -53,13 +55,14 @@ public partial class MainWindow : Window
         Topmost = prefs.Topmost; Opacity = prefs.Opacity;
         client.PreferredPath = prefs.CodexPath;
         BuildDetailView();
+        BuildCompactView();
         ApplyView(false);
         Loaded += async (_, _) =>
         {
             PlaceInitial(); KeepVisible();
-            if (!testing) { claudeStore.Refresh(); claude = claudeStore.Current; CreateTray(); if (prefs.Taskbar) { SetTaskbar(true, false); Hide(); } clock.Start(); await RefreshAsync(); }
+            if (!testing) { claudeStore.Refresh(); claude = claudeStore.Current; CreateTray(); CheckClaudeAlert(); if (prefs.Taskbar) { SetTaskbar(true, false); Hide(); } clock.Start(); await RefreshAsync(); }
         };
-        clock.Tick += async (_, _) => { if (!testing && claudeStore.Refresh()) claude = claudeStore.Current; RenderState(); UpdateTray(); UpdateTaskbar(); if (!busy && DateTimeOffset.Now >= nextPoll) await RefreshAsync(); if (!testing) await PollClaudeAsync(); };
+        clock.Tick += async (_, _) => { if (!testing && claudeStore.Refresh()) { claude = claudeStore.Current; CheckClaudeAlert(); } if (!testing) FlushNotices(); RenderState(); UpdateTray(); UpdateTaskbar(); if (!busy && DateTimeOffset.Now >= nextPoll) await RefreshAsync(); if (!testing) await PollClaudeAsync(); };
         KeyDown += (_, e) => { if (e.Key == Key.Escape) Hide(); if (e.Key == Key.F5) _ = RefreshAsync(); };
         MouseRightButtonUp += (_, _) => ShowSettings();
         Closing += (_, e) => { if (!exiting) { e.Cancel = true; Hide(); } };
@@ -107,29 +110,34 @@ public partial class MainWindow : Window
         try { Directory.CreateDirectory(Path.GetDirectoryName(settingsFile)!); var temp = settingsFile + ".tmp"; File.WriteAllText(temp, JsonSerializer.Serialize(prefs)); File.Move(temp, settingsFile, true); } catch { }
     }
     [DllImport("user32.dll")] private static extern bool DestroyIcon(IntPtr handle);
+    // Only fresh values may claim "unusable"; an old reading is already shown as "!" or (이전 값).
+    internal static bool TrayBlocked(RingService[] services) => services.Any(x => x.Blocked && !x.Stale);
     private void UpdateTray()
     {
         if (tray == null) return;
         var now = DateTimeOffset.Now;
         bool stale = IsStale(now);
         var services = TaskbarHost.Services(snapshot, stale, claude, now, ClaudeStale(now));
-        var fresh = services.Where(x => !x.Warning && !x.Stale && x.Lowest != null).Select(x => x.Lowest!).OrderBy(x => x.Remaining).FirstOrDefault();
-        var any = services.Where(x => !x.Warning && x.Lowest != null).Select(x => x.Lowest!).OrderBy(x => x.Remaining).FirstOrDefault();
+        // Each service contributes the number its ring shows (5-hour first); the tray shows the lower of the two.
+        var fresh = services.Where(x => !x.Warning && !x.Stale && x.Shown != null).Select(x => x.Shown!).OrderBy(x => x.Remaining).FirstOrDefault();
+        var any = services.Where(x => !x.Warning && x.Shown != null).Select(x => x.Shown!).OrderBy(x => x.Remaining).FirstOrDefault();
         var main = fresh ?? any;
         string text = main == null ? (stale ? "!" : "—") : fresh == null ? "!" : Math.Floor(main.Remaining).ToString();
+        // A service that cannot be used right now turns the tray number red; the tooltip names which one and until when.
+        bool blocked = TrayBlocked(services);
         bool light = TrayArtwork.IsLightTaskbar();
         int iconSize = Math.Clamp(Forms.SystemInformation.SmallIconSize.Width, 16, 64);
-        var state = $"{text}:{stale}:{main?.Bucket}:{main?.Duration}:{snapshot?.Allowed}:{light}:{iconSize}:{main?.Remaining}:{claude?.Updated}";
+        var state = $"{text}:{stale}:{blocked}:{main?.Bucket}:{main?.Duration}:{snapshot?.Allowed}:{light}:{iconSize}:{main?.Remaining}:{claude?.Updated}";
         if (state == trayState) return;
         trayState = state;
-        using var bitmap = TrayArtwork.Render(text, iconSize, light);
+        using var bitmap = TrayArtwork.Render(text, iconSize, light, blocked ? RingArtwork.Low : null);
         var h = bitmap.GetHicon();
         using var borrowed = Drawing.Icon.FromHandle(h);
         var icon = (Drawing.Icon)borrowed.Clone();
         DestroyIcon(h);
         tray.Icon = icon;
         currentIcon?.Dispose(); currentIcon = icon;
-        string Part(RingService x) => x.Lowest is Quota q ? $"{x.Short} {q.Remaining:0}%" + (x.Stale ? "(이전 값)" : "") : $"{x.Short} 미확인";
+        string Part(RingService x) => x.Blocking is Quota b ? $"{x.Short} 사용 불가 ({RingArtwork.ShortCountdown(b, now)} 후)" : x.Shown is Quota q ? $"{x.Short} {RingArtwork.WindowName(q)} {q.Remaining:0}%" + (x.Stale ? "(이전 값)" : "") : $"{x.Short} 미확인";
         var label = "Codex Meter · " + string.Join(" · ", services.Select(Part));
         tray.Text = label.Length > 127 ? label[..127] : label;
     }
@@ -156,14 +164,30 @@ public partial class MainWindow : Window
             RefreshButton.IsEnabled = true; SetDetailRefreshing(claudeBusy); RenderState(); UpdateTray(); UpdateTaskbar();
         }
     }
-    private void CheckAlert()
+    private void CheckAlert() => Notify(alerts.Observe(snapshot, DateTimeOffset.Now, prefs.Alerts && tray != null, StaleAfter.TotalSeconds));
+    // Claude follows the same 20%/5% policy with its own history; readings older than one stale period
+    // (an old file at startup, a statusLine report from long ago) never raise a warning.
+    private void CheckClaudeAlert() => Notify(claudeAlerts.Observe(ClaudeAlertSnapshot, DateTimeOffset.Now, prefs.Alerts && tray != null, StaleAfter.TotalSeconds));
+    private Snapshot? ClaudeAlertSnapshot => claude?.AlertSnapshot();
+    // Tray balloons are not kept in the notification center: shown while Windows is in Do Not Disturb (reported as
+    // "busy"), full screen, a presentation or the lock screen, they are simply dropped, and the alert policy has already
+    // recorded the stage. So a notice waits here until Windows accepts notifications again (checked every second).
+    private readonly NoticeQueue notices = new();
+    private DateTimeOffset lastNoticeShown = DateTimeOffset.MinValue;
+    private void Notify(UsageNotification? notification)
     {
-        var notification = alerts.Observe(snapshot, DateTimeOffset.Now, prefs.Alerts && tray != null,
-            Math.Max(180, prefs.IntervalSeconds * 2 + 15));
         if (notification == null || testing) return;
-        // OS notification settings control delivery. Do not retry a delivered policy event.
-        try { tray?.ShowBalloonTip(5000, notification.Title, notification.Text,
-            notification.Critical ? Forms.ToolTipIcon.Warning : Forms.ToolTipIcon.Info); }
+        notices.Add(notification, DateTimeOffset.Now);
+        FlushNotices();
+    }
+    private void FlushNotices()
+    {
+        var now = DateTimeOffset.Now;
+        // Two notices in a row get a few seconds apart so the second does not cover the first.
+        if (tray == null || now - lastNoticeShown < TimeSpan.FromSeconds(6) || !NoticeQueue.WindowsAcceptsNotifications()) return;
+        if (notices.Next(now) is not UsageNotification next) return;
+        lastNoticeShown = now;
+        try { tray.ShowBalloonTip(5000, next.Title, next.Text, next.Critical ? Forms.ToolTipIcon.Warning : Forms.ToolTipIcon.Info); }
         catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception) { }
     }
     private void ToggleAlerts()
@@ -171,11 +195,19 @@ public partial class MainWindow : Window
         prefs.Alerts = !prefs.Alerts;
         if (!testing) Save();
         nextPoll = DateTimeOffset.MinValue;
+        CheckClaudeAlert();
     }
-    private string AlertPauseTitle => alerts.AnyMuted(snapshot) ? "알림 다시 켜기" : "다음 리셋까지 알림 끄기";
+    // One pause covers both services: it stays until each service's own next reset.
+    private bool AlertsMuted => alerts.AnyMuted(snapshot) || claudeAlerts.AnyMuted(ClaudeAlertSnapshot);
+    private string AlertPauseTitle => AlertsMuted ? "알림 다시 켜기" : "다음 리셋까지 알림 끄기";
+    private bool AlertQuotasKnown => alerts.HasQuotas(snapshot) || claudeAlerts.HasQuotas(ClaudeAlertSnapshot);
+    private string? AlertStorageWarning => alerts.StorageWarning ?? claudeAlerts.StorageWarning;
     private void ToggleAlertPause()
     {
-        alerts.SetMuted(snapshot, DateTimeOffset.Now, !alerts.AnyMuted(snapshot));
+        bool mute = !AlertsMuted;
+        var now = DateTimeOffset.Now;
+        alerts.SetMuted(snapshot, now, mute);
+        claudeAlerts.SetMuted(ClaudeAlertSnapshot, now, mute);
         nextPoll = DateTimeOffset.MinValue;
     }
     public void SetSnapshot(Snapshot? value, string? failure = null) { snapshot = value; error = failure; RenderState(); }
@@ -220,6 +252,7 @@ public partial class MainWindow : Window
         }
         ExtraWindows.Visibility = ExtraWindows.Children.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         RenderDetail(now);
+        RenderCompact(now);
         RenderSegments();
     }
     private void ApplyView(bool save)
@@ -229,7 +262,9 @@ public partial class MainWindow : Window
         // The shared Codex-first detail layout stays hidden; Dual shows both services with equal weight.
         Expanded.Visibility = Visibility.Collapsed;
         if (DetailPanel != null) DetailPanel.Visibility = !bars && !prefs.Compact ? Visibility.Visible : Visibility.Collapsed;
-        Compact.Visibility = !bars && prefs.Compact ? Visibility.Visible : Visibility.Collapsed;
+        // The shared compact layout is Codex-only; Dual shows both services in its own compact view.
+        Compact.Visibility = Visibility.Collapsed;
+        if (DualCompact != null) DualCompact.Visibility = !bars && prefs.Compact ? Visibility.Visible : Visibility.Collapsed;
         SegmentRows.Visibility = bars ? Visibility.Visible : Visibility.Collapsed;
         Outer.Margin = new Thickness(bars ? 3 : 10);
         Outer.CornerRadius = new CornerRadius(bars ? 5 : 13);
@@ -301,7 +336,7 @@ public partial class MainWindow : Window
         try
         {
             var reading = await claudePoller.PollAsync(lifetime.Token);
-            if (reading != null) { claudeStore.Refresh(); claude = claudeStore.Current ?? reading; }
+            if (reading != null) { claudeStore.Refresh(); claude = claudeStore.Current ?? reading; CheckClaudeAlert(); }
         }
         catch (OperationCanceledException) { }
         finally
