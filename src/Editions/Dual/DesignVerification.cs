@@ -82,6 +82,12 @@ internal static class DesignVerification
         var darkBar = System.Drawing.Color.FromArgb(32, 32, 32); var lightBar = System.Drawing.Color.FromArgb(243, 243, 243);
         double worst = new[] { Contrast(RingArtwork.LabelTone(false), darkBar), Contrast(RingArtwork.TimeTone(false), darkBar), Contrast(RingArtwork.LabelTone(true), lightBar), Contrast(RingArtwork.TimeTone(true), lightBar) }.Min();
         check(worst >= 9, $"labels and times are high-contrast text on dark and light taskbars, not a dim grey (lowest {worst:0.0}:1)");
+        // Accent text (compact view, short token): service color on a dark taskbar, its darker tone on light and white.
+        var white = System.Drawing.Color.White;
+        double accentWorst = new[] { Contrast(RingService.CodexAccent, darkBar), Contrast(RingService.ClaudeAccent, darkBar),
+            Contrast(RingService.CodexTextOnLight, lightBar), Contrast(RingService.ClaudeTextOnLight, lightBar),
+            Contrast(RingService.CodexTextOnLight, white), Contrast(RingService.ClaudeTextOnLight, white) }.Min();
+        check(accentWorst >= 4.5, $"service-colored text keeps 4.5:1 on dark and light taskbars and the white window (lowest {accentWorst:0.0}:1)");
 
         var open = new System.Drawing.Rectangle(0, 0, 2560, 72);
         var roomy = TaskbarHost.FindMeterSpace(open, new[] { new System.Drawing.Rectangle(0, 0, 300, 72) }, 2140, 1.5f, 66);
@@ -228,9 +234,11 @@ internal static class DesignVerification
         {
             // Each service's slot: [ring][gap][token] then the service gap; Claude starts at the second slot.
             int slot = RingArtwork.Pad + RingArtwork.RingCell + RingArtwork.TokenGap + RingArtwork.TokenWidth + RingArtwork.ServiceGap;
-            int purple = Enumerable.Range(slot, RingArtwork.PreferredWidth - slot).Sum(x => Enumerable.Range(0, 44).Count(y => image.GetPixel(x, y).ToArgb() == RingService.ClaudeAccent.ToArgb()));
-            int coral = Enumerable.Range(0, slot).Sum(x => Enumerable.Range(0, 44).Count(y => image.GetPixel(x, y).ToArgb() == RingService.CodexAccent.ToArgb()));
-            check(purple > 20 && coral > 20, "Codex and Claude rings use their own colors");
+            int terracotta = Enumerable.Range(slot, RingArtwork.PreferredWidth - slot).Sum(x => Enumerable.Range(0, 44).Count(y => image.GetPixel(x, y).ToArgb() == RingService.ClaudeAccent.ToArgb()));
+            int emerald = Enumerable.Range(0, slot).Sum(x => Enumerable.Range(0, 44).Count(y => image.GetPixel(x, y).ToArgb() == RingService.CodexAccent.ToArgb()));
+            check(terracotta > 20 && emerald > 20, "Codex (emerald) and Claude (terracotta) rings use their own colors");
+            var codexHue = RingService.CodexAccent.GetHue(); var claudeHue = RingService.ClaudeAccent.GetHue();
+            check(codexHue is > 150 and < 170 && claudeHue is > 10 and < 25, $"Codex is emerald green and Claude terracotta orange (hues {codexHue:0}°, {claudeHue:0}°)");
         }
         var unknown = TaskbarHost.Services(null, false, null, now);
         check(unknown.All(x => x.Center == "—"), "missing data renders a dash, never zero or full");

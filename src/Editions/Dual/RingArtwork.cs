@@ -14,8 +14,12 @@ namespace CodexMeter;
 /// </summary>
 internal sealed record RingService(string Short, Color Accent, Quota? FiveHour, Quota? Weekly, bool Stale, bool Warning, bool NoFiveHour = false, DateTimeOffset At = default)
 {
-    public static readonly Color CodexAccent = Color.FromArgb(222, 128, 94);
-    public static readonly Color ClaudeAccent = Color.FromArgb(143, 134, 230);
+    // Codex emerald green, Claude terracotta orange: rings, dots, row tints and accent text on a dark taskbar.
+    public static readonly Color CodexAccent = Color.FromArgb(31, 175, 126);    // #1FAF7E
+    public static readonly Color ClaudeAccent = Color.FromArgb(217, 119, 87);   // #D97757
+    // Darker tones of the same hues for accent text on a light taskbar and the white window (about 5:1).
+    public static readonly Color CodexTextOnLight = Color.FromArgb(4, 120, 87);    // #047857
+    public static readonly Color ClaudeTextOnLight = Color.FromArgb(164, 73, 44);  // #A4492C
     /// <summary>The center number: the 5-hour window while it has anything left, otherwise the weekly window.</summary>
     public Quota? Shown => FiveHour is { Remaining: > 0 } ? FiveHour : Weekly ?? FiveHour;
     /// <summary>
@@ -83,7 +87,7 @@ internal static class RingArtwork
 
     /// <summary>Accent text needs a darker tone on a light taskbar to keep about 4.5:1 contrast.</summary>
     internal static Color TextAccent(RingService s, bool light) => !light ? s.Accent
-        : s.Accent.ToArgb() == RingService.CodexAccent.ToArgb() ? Color.FromArgb(168, 78, 46) : Color.FromArgb(92, 82, 190);
+        : s.Accent.ToArgb() == RingService.CodexAccent.ToArgb() ? RingService.CodexTextOnLight : RingService.ClaudeTextOnLight;
 
     /// <summary>Uses the requested family when installed (Segoe UI Variable ships with Windows 11), otherwise Segoe UI.</summary>
     internal static Font Font(string family, float size, string fallback = "Segoe UI")

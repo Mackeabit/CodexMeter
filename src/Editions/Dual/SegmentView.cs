@@ -30,7 +30,7 @@ internal static class SegmentView
             var cell = new Grid { Margin = new Thickness(0, 0, i == 9 ? 0 : single ? 3 : 2, 0) };
             var radius = new CornerRadius(single ? 3 : 2);
             cell.Children.Add(new Border { Background = Color("#424242"), CornerRadius = radius });
-            var fill = new Border { Background = Color(warning ? "#808080" : quota?.Bucket == ClaudeReading.Bucket ? "#8F86E6" : "#DE805E"), CornerRadius = radius };
+            var fill = new Border { Background = Color(warning ? "#808080" : quota?.Bucket == ClaudeReading.Bucket ? "#D97757" : "#1FAF7E"), CornerRadius = radius };
             cell.SizeChanged += (_, _) => fill.Clip = new RectangleGeometry(new Rect(0, 0, Math.Max(0, cell.ActualWidth * fraction), Math.Max(0, cell.ActualHeight)));
             cell.Children.Add(fill); cells.Children.Add(cell);
         }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.3.7 — 2026-11-28
+
+- Dual: new service colors. Codex is emerald green (`#1FAF7E`) and Claude terracotta orange (`#D97757`), replacing coral and violet. They cover the taskbar rings, the row dot and tint, the compact and detail windows (rings, dots, row backgrounds) and the segmented bars.
+- Dual: accent text on a light taskbar and in the white window uses darker tones of the same hues (`#047857`, `#A4492C`), at least 4.9:1 contrast. Low and exhausted states stay red and stale values grey.
+- Classic and Expanded are unchanged.
+
 ## 2.3.6 — 2026-11-28
 
 - Dual: taskbar and ring text is drawn with WPF's text engine (Display mode, pixel-grid hinting) instead of GDI+. GDI+ text on the transparent taskbar surface lost much of its coverage, so at 100% scale the 12 px Hangul rows looked dim and smeared. Each string is now rasterized at device pixels and placed on whole pixels. The compact and detail window rings use the same path.

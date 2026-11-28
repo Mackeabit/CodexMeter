@@ -50,7 +50,7 @@ internal static class MeterArtwork
             float cellY = top + (rowHeight - cellHeight) / 2;
             float gap = single ? (trackWidth < 70 ? 1 : 3) : 2;
             float cellWidth = (trackWidth - 9 * gap) / 10;
-            using var fill = new SolidBrush(warning ? Color.Gray : Color.FromArgb(222, 128, 94));
+            using var fill = new SolidBrush(warning ? Color.Gray : RingService.CodexAccent);
             for (int i = 0; i < 10; i++)
             {
                 var cell = new RectangleF(2 + i * (cellWidth + gap), cellY, cellWidth, cellHeight);
