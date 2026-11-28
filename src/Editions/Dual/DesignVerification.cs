@@ -13,6 +13,9 @@ internal static class DesignVerification
         var claudeReal = claude with { Windows = new[] { claude.Windows[0] with { Used = 23 }, claude.Windows[1] with { Used = 27 } } };
         foreach (float scale in new[] { 1f, 1.25f, 1.5f, 2f })
             TaskbarHost.SavePreview(Path.Combine(folder, $"wide-{(int)(scale * 100)}.png"), real, claudeReal, false, scale, RingArtwork.WideWidth, false, now);
+        // A 40 px taskbar at 100% leaves the meter 36 DIP (Windows 10 desktop): the tightest full layout.
+        TaskbarHost.SavePreview(Path.Combine(folder, "wide-100-desktop.png"), real, claudeReal, false, 1f, RingArtwork.WideWidth, false, now, heightDip: 36);
+        TaskbarHost.SavePreview(Path.Combine(folder, "wide-100-desktop-both.png"), codex, claude, false, 1f, RingArtwork.WideWidth, false, now, heightDip: 36);
         TaskbarHost.SavePreview(Path.Combine(folder, "wide-light.png"), real, claudeReal, false, 1.5f, RingArtwork.WideWidth, true, now);
         TaskbarHost.SavePreview(Path.Combine(folder, "wide-both-windows.png"), codex, claude, false, 1.5f, RingArtwork.WideWidth, false, now);
         TaskbarHost.SavePreview(Path.Combine(folder, "wide-five-hour-exhausted.png"), codex with { Windows = new[] { first with { Used = 100 }, week with { Used = 40 } } }, claude, false, 1.5f, RingArtwork.WideWidth, false, now);
@@ -47,27 +50,29 @@ internal static class DesignVerification
             RingArtwork.LongCountdown(week with { Reset = now.AddMinutes(-1) }, now) == "확인 중" && RingArtwork.LongCountdown(week with { Reset = null }, now) == "—",
             "the time left reads in words: days and hours, hours and minutes, minutes");
 
-        using (var probe = new System.Drawing.Bitmap(10, 10))
-        using (var g = System.Drawing.Graphics.FromImage(probe))
-        using (var label = RingArtwork.Font(RingArtwork.TokenFont, RingArtwork.RowTextSize))
-        using (var value = RingArtwork.Font(RingArtwork.NumberFont, RingArtwork.RowTextSize + .5f))
+        // Widths as the taskbar draws them (WPF Display mode rounds advances per scale), at every scale previews cover.
+        foreach (float scale in new[] { 1f, 1.25f, 1.5f, 2f })
         {
-            var fmt = System.Drawing.StringFormat.GenericTypographic;
-            float W(string t, System.Drawing.Font f) => g.MeasureString(t, f, System.Drawing.PointF.Empty, fmt).Width;
-            float labelMax = new[] { "5시간", "주간" }.Max(t => W(t, label));
-            float valueMax = Math.Max(W("100%", value), W("없음", label));
-            float timeMax = new[] { "6일 23시간", "23시간 59분", "4시간 59분 후", "6일 23시간 후", "59분", "확인 중", "주간 한도만", "—" }.Max(t => W(t, label));
+            double W(string t, TextArt.Face f, float size) => TextArt.Width(t, f, size, scale);
+            double labelMax = new[] { "5시간", "주간" }.Max(t => W(t, TextArt.Face.Text, RingArtwork.RowTextSize));
+            double valueMax = Math.Max(W("100%", TextArt.Face.Number, RingArtwork.RowValueSize), W("없음", TextArt.Face.Text, RingArtwork.RowTextSize));
+            double timeMax = new[] { "6일 23시간", "23시간 59분", "4시간 59분 후", "6일 23시간 후", "59분", "확인 중", "주간 한도만", "—" }.Max(t => W(t, TextArt.Face.Text, RingArtwork.RowTextSize));
             check(labelMax <= RingArtwork.RowLabelWidth && valueMax <= RingArtwork.RowValueRight - RingArtwork.RowLabelX - RingArtwork.RowLabelWidth && timeMax <= RingArtwork.RowTimeWidth,
-                $"full row text fits its columns (label {labelMax:0.#}/{RingArtwork.RowLabelWidth}, value {valueMax:0.#}/{RingArtwork.RowValueRight - RingArtwork.RowLabelX - RingArtwork.RowLabelWidth}, time {timeMax:0.#}/{RingArtwork.RowTimeWidth:0.#} DIP)");
+                $"full row text fits its columns at {scale * 100:0}% (label {labelMax:0.#}/{RingArtwork.RowLabelWidth}, value {valueMax:0.#}/{RingArtwork.RowValueRight - RingArtwork.RowLabelX - RingArtwork.RowLabelWidth}, time {timeMax:0.#}/{RingArtwork.RowTimeWidth:0.#} DIP)");
+        }
 
-            // Larger ring numbers must still clear the inner ring, on the laptop (36 DIP ring) and the 40 px desktop (28).
-            foreach (float d in new[] { 36f, 28f })
+        // Ring numbers keep a clear pixel to the inner ring and stay large: 150% laptop (44 DIP meter, 36 DIP ring) and the
+        // 40 px desktop taskbar at 100% (36 DIP meter, 30 DIP ring). The desktop once drew "88" touching the inner ring.
+        check(RingArtwork.DesktopDiameter(44) == 36 && RingArtwork.DesktopDiameter(36) == 30, "rings are 36 DIP on the laptop and 30 DIP on a 40 px desktop taskbar");
+        foreach (var (h, scale) in new[] { (44f, 1.5f), (36f, 1f), (36f, 1.25f) })
+        {
+            float d = RingArtwork.DesktopDiameter(h), room = RingArtwork.InnerOpening(d) - 2 / scale;
+            foreach (string t in new[] { "88", "100", "!" })
             {
-                using var two = RingArtwork.Font(RingArtwork.NumberFont, RingArtwork.CenterFontSize("88", d));
-                using var three = RingArtwork.Font(RingArtwork.NumberFont, RingArtwork.CenterFontSize("100", d));
-                float widest = Math.Max(W("88", two), W("100", three)), room = RingArtwork.InnerOpening(d);
-                check(widest <= room && RingArtwork.CenterFontSize("88", d) > d * .34f,
-                    $"ring numbers are larger and still fit inside the inner ring at {d} DIP ({widest:0.#}/{room:0.#} DIP, {RingArtwork.CenterFontSize("88", d):0.#} px)");
+                float size = TextArt.FitSize(t, RingArtwork.CenterFontSize(t, d), scale, RingArtwork.InnerOpening(d));
+                var ink = TextArt.Ink(t, TextArt.Face.Number, size, scale);
+                check(ink.Width <= room && ink.Height <= room && (t != "88" || size >= d * .34f),
+                    $"ring number {t} clears the inner ring by a pixel at {d} DIP, {scale * 100:0}% (ink {ink.Width:0.#}x{ink.Height:0.#} in {room:0.#} DIP, {size:0.#} px)");
             }
         }
 
@@ -206,7 +211,8 @@ internal static class DesignVerification
             check(corner.A >= 1, "background keeps a hit-testable alpha for hover and clicks");
             check(hovered.GetPixel(RingArtwork.PreferredWidth - 3, 22).A > corner.A, "pointer hover adds a visible wash");
         }
-        check(RingArtwork.Font(RingArtwork.NumberFont, 12).Name is RingArtwork.NumberFont or "Segoe UI", "ring numbers use Segoe UI Variable when installed, else Segoe UI");
+        check(TextArt.NumberFamily is "Segoe UI Variable Display" or "Segoe UI" && TextArt.Typeface(TextArt.Face.Number).Weight == System.Windows.FontWeights.SemiBold,
+            $"ring numbers use semibold Segoe UI Variable when installed, else semibold Segoe UI ({TextArt.NumberFamily})");
         check(services[0].Center == "63" && services[1].Center == "88", "ring centers show the 5-hour value first, even when the weekly value is lower");
         check(services.All(s => s.Shown?.Minutes == 300 && !s.Blocked) && RingArtwork.Token(services[0], services[0].Shown!, now).Top == "5시간", "each reset token names the window the center number shows");
         StateChecks(folder, now, week, first, codex, claude, check);

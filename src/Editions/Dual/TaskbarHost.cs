@@ -184,10 +184,10 @@ internal sealed class TaskbarHost : Forms.NativeWindow, IDisposable
         }
         return null;
     }
-    internal static void SavePreview(string path, Snapshot? value, ClaudeReading? claudeValue, bool warning, float dpiScale, int width = RingArtwork.PreferredWidth, bool? light = null, DateTimeOffset? now = null, bool pointer = false)
+    internal static void SavePreview(string path, Snapshot? value, ClaudeReading? claudeValue, bool warning, float dpiScale, int width = RingArtwork.PreferredWidth, bool? light = null, DateTimeOffset? now = null, bool pointer = false, int heightDip = 44)
     {
         bool isLight = light ?? TrayArtwork.IsLightTaskbar();
-        using var artwork = RingArtwork.Render((int)(width * dpiScale), (int)(44 * dpiScale), dpiScale, Services(value, warning, claudeValue, now ?? DateTimeOffset.Now), isLight, now ?? DateTimeOffset.Now, pointer);
+        using var artwork = RingArtwork.Render((int)(width * dpiScale), (int)(heightDip * dpiScale), dpiScale, Services(value, warning, claudeValue, now ?? DateTimeOffset.Now), isLight, now ?? DateTimeOffset.Now, pointer);
         using var bitmap = RingArtwork.Composite(artwork, isLight);
         bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
     }
