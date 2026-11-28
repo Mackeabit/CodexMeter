@@ -118,8 +118,9 @@ internal static class RingArtwork
         }
         var ink = light ? Color.FromArgb(26, 26, 26) : Color.FromArgb(242, 242, 242);
         var stale = light ? Color.FromArgb(150, 150, 150) : Color.FromArgb(128, 128, 128);
-        // The outer margin is at least the space between rings, so the pair never looks cramped against the taskbar edge.
-        float diameter = Math.Min(RingCell - 4, h - 8);
+        // 3 DIP above and below the ring. A 40 px taskbar at 100% (36 DIP meter) gets a 30 DIP ring instead of 28, which
+        // leaves its center number a clear gap to the inner ring; the 150% laptop taskbar stays at the 36 DIP cap.
+        float diameter = DesktopDiameter(h);
         float outerStroke = Math.Max(3, diameter * .1f), innerStroke = Math.Max(2.5f, diameter * .085f), ringGap = Math.Max(2f, diameter * .065f);
         float cy = h / 2;
         // Full rows beside each ring; only when no space anywhere fits them, the short token; then rings only.
@@ -128,7 +129,6 @@ internal static class RingArtwork
         bool tall = h + slack >= WideMinimumHeight;
         bool rows = tall && w + slack >= WideWidth;
         bool tokens = !rows && w + slack >= PreferredWidth;
-        using var center = new StringFormat(StringFormat.GenericTypographic) { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap };
         for (int i = 0; i < services.Length; i++)
         {
             var s = services[i];
@@ -138,15 +138,16 @@ internal static class RingArtwork
             float outerR = (diameter - outerStroke) / 2, innerR = outerR - outerStroke / 2 - ringGap - innerStroke / 2;
             DrawRings(g, cx, cy, outerR, outerStroke, innerR, innerStroke, s, stale, light);
             string text = s.Center;
-            using var font = Font(NumberFont, CenterFontSize(text, diameter));
-            using var brush = new SolidBrush(s.Warning || s.Alert ? Low : s.Stale ? stale : ink);
-            g.DrawString(text, font, brush, new RectangleF(cx - outerR, cy - outerR + .5f, outerR * 2, outerR * 2), center);
-            if (rows) DrawRows(g, start + RingCell + RowGap, cy, s, now, light, ink, stale);
+            TextArt.DrawCentered(g, scale, text, CenterFontSize(text, diameter), s.Warning || s.Alert ? Low : s.Stale ? stale : ink, cx, cy, InnerOpening(diameter));
+            if (rows) DrawRows(g, scale, start + RingCell + RowGap, cy, s, now, light, ink, stale);
             else if (tokens && !s.Warning && s.Shown is Quota shown)
-                DrawToken(g, start + RingCell + TokenGap, cy, shown, s, now, light, ink, stale);
+                DrawToken(g, scale, start + RingCell + TokenGap, cy, shown, s, now, light, ink, stale);
         }
         return bitmap;
     }
+
+    /// <summary>Taskbar ring diameter for a meter <paramref name="heightDip"/> tall: 3 DIP margin, at most 36.</summary>
+    internal static float DesktopDiameter(float heightDip) => Math.Min(RingCell - 4, heightDip - 6);
 
     /// <summary>One service's ring for the detail window: same geometry and colors as the taskbar, larger.</summary>
     internal static Bitmap RenderRing(RingService s, float sizeDip, float scale, bool light)
@@ -166,10 +167,7 @@ internal static class RingArtwork
         float outerR = (diameter - outerStroke) / 2, innerR = outerR - outerStroke / 2 - ringGap - innerStroke / 2;
         DrawRings(g, c, c, outerR, outerStroke, innerR, innerStroke, s, stale, light);
         string text = s.Center;
-        using var font = Font(NumberFont, CenterFontSize(text, diameter * .8f));
-        using var brush = new SolidBrush(s.Warning || s.Alert ? Low : s.Stale ? stale : ink);
-        using var center = new StringFormat(StringFormat.GenericTypographic) { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap };
-        g.DrawString(text, font, brush, new RectangleF(0, .5f, sizeDip, sizeDip), center);
+        TextArt.DrawCentered(g, scale, text, CenterFontSize(text, diameter * .8f), s.Warning || s.Alert ? Low : s.Stale ? stale : ink, c, c, 2 * (innerR - innerStroke / 2));
         return bitmap;
     }
 
@@ -199,22 +197,17 @@ internal static class RingArtwork
         ? (BlockedToken, ShortCountdown(blocking, now))
         : (WindowName(shown), ShortCountdown(shown, now));
 
-    private static void DrawToken(Graphics g, float x, float cy, Quota q, RingService s, DateTimeOffset now, bool light, Color ink, Color stale)
+    private static void DrawToken(Graphics g, float scale, float x, float cy, Quota q, RingService s, DateTimeOffset now, bool light, Color ink, Color stale)
     {
         var (topText, bottomText) = Token(s, q, now);
-        using var top = Font(TokenFont, 11);
-        using var bottom = Font(TokenFont, 12);
-        using var topBrush = new SolidBrush(s.Stale ? stale : s.Alert ? Low : TextAccent(s, light));
-        using var bottomBrush = new SolidBrush(s.Stale ? stale : ink);
-        using var left = new StringFormat(StringFormat.GenericTypographic) { LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap };
-        g.DrawString(topText, top, topBrush, new RectangleF(x, cy - 15, TokenWidth, 14), left);
-        g.DrawString(bottomText, bottom, bottomBrush, new RectangleF(x, cy + 1, TokenWidth, 15), left);
+        TextArt.Draw(g, scale, topText, TextArt.Face.Text, 11, s.Stale ? stale : s.Alert ? Low : TextAccent(s, light), new RectangleF(x, cy - 15, TokenWidth, 14));
+        TextArt.Draw(g, scale, bottomText, TextArt.Face.Text, 12, s.Stale ? stale : ink, new RectangleF(x, cy + 1, TokenWidth, 15));
     }
 
     internal const int RowHeight = 16;
     // Row columns inside RowWidth: [dot][label 5시간/주간][value right-aligned][time left].
     internal const float RowLabelX = 8, RowLabelWidth = 32, RowValueRight = 72, RowTimeX = 77, RowTimeWidth = RowWidth - RowTimeX - 1;
-    internal const float RowTextSize = 12;
+    internal const float RowTextSize = 12, RowValueSize = RowTextSize + .5f;
     // Text tones on the taskbar: values in full ink, times nearly as strong, labels one step softer. The earlier single
     // muted grey (176 on dark, 92 on light) read as disabled; these keep a clear hierarchy without looking greyed out.
     internal static Color LabelTone(bool light) => light ? Color.FromArgb(64, 64, 64) : Color.FromArgb(210, 210, 210);
@@ -232,14 +225,9 @@ internal static class RingArtwork
 
     // Two rows (5h on top, 주 below) beside a ring. The shown row gets the service dot and a faint tint of its color;
     // an exhausted row is red. The taskbar version of the detail window's rows.
-    private static void DrawRows(Graphics g, float x, float cy, RingService s, DateTimeOffset now, bool light, Color ink, Color stale)
+    private static void DrawRows(Graphics g, float scale, float x, float cy, RingService s, DateTimeOffset now, bool light, Color ink, Color stale)
     {
         var muted = LabelTone(light);
-        using var labelFont = Font(TokenFont, RowTextSize);
-        using var valueFont = Font(NumberFont, RowTextSize + .5f);
-        using var timeFont = Font(TokenFont, RowTextSize);
-        using var left = new StringFormat(StringFormat.GenericTypographic) { LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap };
-        using var right = new StringFormat(StringFormat.GenericTypographic) { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap };
         foreach (var (q, fiveHour, top) in new[] { (s.FiveHour, true, cy - RowHeight - 1f), (s.Weekly, false, cy + 1f) })
         {
             var (label, value, time) = RowText(s, q, fiveHour, now);
@@ -255,12 +243,12 @@ internal static class RingArtwork
                 using var dot = new SolidBrush(s.Stale ? stale : s.Accent);
                 g.FillEllipse(dot, x + 2.5f, top + RowHeight / 2f - 2f, 3.6f, 3.6f);
             }
-            using var labelBrush = new SolidBrush(s.Stale ? stale : muted);
-            using var valueBrush = new SolidBrush(s.Stale ? stale : s.Warning ? muted : low || exhausted ? Low : value == "없음" ? muted : ink);
-            using var timeBrush = new SolidBrush(s.Stale ? stale : exhausted ? Low : TimeTone(light));
-            g.DrawString(label, labelFont, labelBrush, new RectangleF(x + RowLabelX, top, RowLabelWidth, RowHeight), left);
-            g.DrawString(value, value == "없음" ? labelFont : valueFont, valueBrush, new RectangleF(x + RowLabelX + RowLabelWidth, top + .5f, RowValueRight - RowLabelX - RowLabelWidth, RowHeight), right);
-            if (time.Length > 0) g.DrawString(time, timeFont, timeBrush, new RectangleF(x + RowTimeX, top, RowTimeWidth, RowHeight), left);
+            var valueColor = s.Stale ? stale : s.Warning ? muted : low || exhausted ? Low : value == "없음" ? muted : ink;
+            bool word = value == "없음";
+            TextArt.Draw(g, scale, label, TextArt.Face.Text, RowTextSize, s.Stale ? stale : muted, new RectangleF(x + RowLabelX, top, RowLabelWidth, RowHeight));
+            TextArt.Draw(g, scale, value, word ? TextArt.Face.Text : TextArt.Face.Number, word ? RowTextSize : RowValueSize, valueColor,
+                new RectangleF(x + RowLabelX + RowLabelWidth, top, RowValueRight - RowLabelX - RowLabelWidth, RowHeight), StringAlignment.Far);
+            TextArt.Draw(g, scale, time, TextArt.Face.Text, RowTextSize, s.Stale ? stale : exhausted ? Low : TimeTone(light), new RectangleF(x + RowTimeX, top, RowTimeWidth, RowHeight));
         }
     }
 

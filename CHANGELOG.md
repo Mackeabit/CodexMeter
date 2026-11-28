@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.3.6 — 2026-11-28
+
+- Dual: taskbar and ring text is drawn with WPF's text engine (Display mode, pixel-grid hinting) instead of GDI+. GDI+ text on the transparent taskbar surface lost much of its coverage, so at 100% scale the 12 px Hangul rows looked dim and smeared. Each string is now rasterized at device pixels and placed on whole pixels. The compact and detail window rings use the same path.
+- Dual: on a 40 px taskbar at 100% (36 DIP meter) the rings grow from 28 to 30 DIP. Ring numbers are sized by their measured ink and keep at least one device pixel clear of the inner ring; "88" used to touch it there. The 150% laptop rings and number size (15 px) are unchanged.
+- Dual on Windows 10: ring numbers and percentages use Segoe UI Semibold, matching the Segoe UI Variable Semibold used on Windows 11, instead of falling back to regular Segoe UI.
+- Classic and Expanded are unchanged.
+
 ## 2.3.5 — 2026-11-28
 
 - Dual taskbar: clearer text. Labels and times use brighter tones (dark taskbar 210/228 instead of a single 176 grey; light taskbar 64/40 instead of 92), at least 9:1 contrast, and 12 px instead of 11 px; glyphs are grid-fitted to the pixel grid for sharper edges. The full layout widens to 423 DIP so the longest time fits with room for font metric differences between machines.
